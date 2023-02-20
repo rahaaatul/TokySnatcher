@@ -1,12 +1,10 @@
 # audiosnatch
+
 Downloads audiobooks from tokybook.com
 
-```
+```sh
 pip install -r requirements.txt
 py main.py
 ```
 
-![](https://cdn.adriancastro.dev/04qHFae.png)
-![](https://cdn.adriancastro.dev/NeRBXeR.png)
-![](https://cdn.adriancastro.dev/DGYFPX0.png)
-![](https://cdn.adriancastro.dev/YKz3SRc.png)
+After downloading convert it into a proper m4b ebook with [AudioBookBinder](https://github.com/gonzoua/AudioBookBinder).
