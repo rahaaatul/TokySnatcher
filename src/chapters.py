@@ -5,16 +5,10 @@ from os import makedirs, path
 import os
 from json5 import loads
 from src.download import download
-import subprocess
-
-import os
-
-# Create a new directory called "my_folder" in the current working directory if it doesn't exist
 
 SKIP_CHAPTER = "https://file.tokybook.com/upload/welcome-you-to-tokybook.mp3"
 MEDIA_URL = "https://files01.tokybook.com/audio/"
 MEDIA_FALLBACK_URL = "https://files02.tokybook.com/audio/"
-
 
 def get_chapters(BOOK_URL):
     html = get(BOOK_URL)
@@ -36,29 +30,41 @@ def get_chapters(BOOK_URL):
     ]
 
     o = urlparse(BOOK_URL)
-    print(f"Dowanload folder: {path.join('downloads', o.path)}")
-    dir_string = path.join("downloads", o.path)
-    output = subprocess.run(["mkdir", "-p", dir_string], capture_output=True, text=True)
-    print(output.stdout)
-    # os.mkdir(path.join('downloads', o.path))
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    download_folder = os.path.join(current_directory, "downloads", os.path.basename(o.path))
+
+    print(f"Download folder: {download_folder}")
+
+    try:
+        makedirs(download_folder, exist_ok=True)
+    except OSError as e:
+        print(f"Error creating download folder: {e}")
+        return
 
     for item in chapters:
         try:
             download(
                 MEDIA_URL + item["url"],
-                "downloads/" + o.path + "/" + item["name"] + ".mp3",
+                path.join(download_folder, item["name"] + ".mp3"),
             )
             print()
+
+        except OSError as e:
+            print(f"Error creating download folder: {e}")
+            return
+        
         except RuntimeError:
             try:
                 download(
                     MEDIA_FALLBACK_URL + item["url"],
-                    "downloads/" + o.path + "/" + item["name"] + ".mp3",
+                    path.join(download_folder, item["name"] + ".mp3"),
                 )
                 print()
+
             except Exception as e:
                 print(f"An error occured: {e}")
                 break
+
         except Exception as e:
             print(f"An error occured: {e}")
             break
