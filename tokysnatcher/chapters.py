@@ -1,15 +1,18 @@
-from gazpacho import get, Soup
-from urllib.parse import urlparse
-from re import search
-from os import makedirs, path
 import os
+from os import makedirs, path
+from re import search
+from urllib.parse import urlparse
+
+from gazpacho import Soup, get
 from json5 import loads
-from src.download import download
+
+from .download import download
 
 SKIP_CHAPTER = "https://file.tokybook.com/upload/welcome-you-to-tokybook.mp3"
 MEDIA_URL = "https://files01.tokybook.com/audio/"
 MEDIA_FALLBACK_URL = "https://files02.tokybook.com/audio/"
 SLASH_REPLACE_STRING = " out of "
+
 
 def get_chapters(BOOK_URL):
     html = get(BOOK_URL)
@@ -31,8 +34,8 @@ def get_chapters(BOOK_URL):
     ]
 
     o = urlparse(BOOK_URL)
-    current_directory = os.path.dirname(os.path.abspath(__file__))
-    download_folder = os.path.join(current_directory, "downloads", os.path.basename(o.path))
+    current_directory = os.getcwd()
+    download_folder = os.path.join(current_directory, os.path.basename(o.path))
 
     print(f"Download folder: {download_folder}")
 
@@ -53,7 +56,7 @@ def get_chapters(BOOK_URL):
         except OSError as e:
             print(f"Error creating download folder: {e}")
             return
-        
+
         except RuntimeError:
             try:
                 download(
