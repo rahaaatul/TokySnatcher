@@ -1,8 +1,8 @@
 gazpacho==1.1
 halo==0.0.31
-json5==0.9.10
-requests==2.27.1
-tqdm==4.64.0
-urllib3==1.26.8
+json5==0.9.28
+pick==2.4.0
 questionary==2.0.1
-pick==2.3.2
+requests==2.32.3
+tqdm==4.67.0
+urllib3==2.2.3
