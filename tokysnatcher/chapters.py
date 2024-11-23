@@ -34,30 +34,35 @@ def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
     logging.debug(f"Fetching chapters for book: {book_url}")  # Log fetching start
 
     html = get(book_url)
-
     soup = Soup(html)
     js = soup.find("script")
 
-    for crap in js:
-        match = search(r"tracks\s*=\s*(\[[^\]]+\])\s*", crap.text)
+    string = None
+    for script in js:
+        match = search(r"tracks\s*=\s*(\[[^\]]+\])\s*", script.text)
         if match:
             string = match.group(1)
             break
 
+    if not string:
+        logging.error("No tracks found in the provided URL.")
+        return
+
     json = loads(string)
-    chapters = [{"name": x["name"], "url": x["chapter_link_dropbox"]} for x in json if x["chapter_link_dropbox"] != SKIP_CHAPTER]
+    chapters = [
+        {"name": x["name"], "url": x["chapter_link_dropbox"]}
+        for x in json
+        if x["chapter_link_dropbox"] != SKIP_CHAPTER
+    ]
 
     o = urlparse(book_url)
     logging.debug(f"Custom folder provided: {custom_folder}")
-    # Use provided download folder if available, otherwise use current directory
-    download_folder = Path(custom_folder).joinpath(Path(o.path).name) or Path.cwd().joinpath((o.path).name)
+    download_folder = Path(custom_folder).joinpath(Path(o.path).name) if custom_folder else Path.cwd().joinpath(Path(o.path).name)
 
     logging.info(f"Download folder: {download_folder}")
 
     try:
-        # Create the directory if it doesn't exist
         download_folder.mkdir(parents=True, exist_ok=True)
-
     except OSError as e:
         logging.exception(f"Error creating download folder: {e}")
         return
@@ -66,21 +71,22 @@ def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
         for item in chapters:
             download(
                 MEDIA_URL + item["url"],
-                download_folder.joinpath(f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"),
+                download_folder.joinpath(
+                    f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"
+                ),
             )
             logging.info(f"Downloaded: {item['name']}")
-
     except RuntimeError:
         logging.exception(f"Error downloading chapter: {item['name']}")
         logging.debug("Switching to fallback source.")
-
         for item in chapters:
             download(
                 MEDIA_FALLBACK_URL + item["url"],
-                download_folder.joinpath(f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"),
+                download_folder.joinpath(
+                    f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"
+                ),
             )
             logging.info(f"Downloaded: {item['name']}")
-
     except OSError as e:
         logging.exception(f"Error during download: {e}")
         return
