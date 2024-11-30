@@ -2,6 +2,11 @@
 
 > Snatch audiobooks from Tokybook 😈
 
+> [!CAUTION]
+>
+> - Python 3.13 is not supported, yet.
+>
+
 ## Installation
 
 1. Open terminal, then run:
@@ -22,11 +27,6 @@
     tokysnatcher
     ```
 
-> [!NOTE]
->
-> - After downloading convert it into a proper m4b ebook with [AudioBookBinder](https://github.com/gonzoua/AudioBookBinder).
->
-
 ## Usage
 
 - In command line invoke `-h` for help:
@@ -41,12 +41,7 @@
     tokysnatcher -d "C:\Users\User\Music"
     ```
 
-## Thanks to
-
-- [Tokybook](https://tokybook.com/)
-- [Adrian Castro](https://github.com/castdrian/)
-- [Eric Winter](https://github.com/xdf8/)
-- [Daniel](https://github.com/rozari0)
-- [Drew](https://github.com/drdeaton)
-- [Claude AI](https://claude.ai/)
-- [Gemini](https://gemini.google.com/app)
+> [!NOTE]
+>
+> - If `-d` or `--directory` is not invoked, TokySnatcher will download the books in current directory.
+>
