@@ -1,18 +1,18 @@
 [project]
 name = "tokysnatcher"
-version = "0.3.1"
+version = "0.3.2"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
-requires-python = ">=3.7,<=3.12.7"
+requires-python = ">=3.7,<=3.13.3"
 dependencies = [
   "gazpacho==1.1",
   "halo==0.0.31",
-  "json5==0.9.28",
+  "json5==0.12.0",
   "pick==2.4.0",
-  "questionary==2.0.1",
+  "questionary==2.1.0",
   "requests==2.32.3",
-  "tqdm==4.67.0",
-  "urllib3==2.2.3",
+  "tqdm==4.67.1",
+  "urllib3==2.4.0",
 ]
 classifiers = [
   "Programming Language :: Python :: 3",

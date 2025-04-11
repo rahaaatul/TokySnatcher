@@ -7,10 +7,12 @@ from tqdm.auto import tqdm
 
 
 def download(url, filename):
-    r = get(url, stream=True, allow_redirects=True)
-    if r.status_code != 200:
-        r.raise_for_status()  # Will only raise for 4xx codes, so...
-        raise RuntimeError(f"Request to {url} returned status code {r.status_code}")
+    try:
+        r = get(url, stream=True, allow_redirects=True)
+        r.raise_for_status()
+    except Exception as e:
+        raise RuntimeError(f"Request to {url} failed: {e}")
+
     file_size = int(r.headers.get("Content-Length", 0))
 
     path = Path(filename).expanduser().resolve()
