@@ -6,8 +6,8 @@ from pick import pick
 
 
 def fetch_results(query: str, page: int = 1):
-    SEARCH_URL = f"https://tokybook.com/page/{page}/?s="
-    html = get(SEARCH_URL + quote(query))
+    SEARCH_URL = f"https://tokybook.com/search/more?q={quote(query)}&page={page-1}"
+    html = get(SEARCH_URL)
     soup = Soup(html)
     return soup
 
@@ -28,14 +28,7 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
         soup = fetch_results(query, page)
         previous_pages[page] = soup
 
-    not_found = soup.find("h1", {"class": "entry-title"})
-
-    if not_found and not_found.text == "Nothing Found":
-        print("No results found!")
-        spinner.stop()
-        return search_book()
-
-    results = soup.find("h2", {"class": "entry-title"})
+    results = soup.find("div", {"class": "book-card"})
 
     if not isinstance(results, list):
         print("No results found. Exiting...")
@@ -45,7 +38,7 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
     titles = [f"📖 {x.text}" for x in results]
     urls = [x.find("a").attrs.get("href") for x in results]
 
-    next_page = soup.find("a", {"class": "next page-numbers"})
+    next_page = len(results) == 10  # If we got 10 results, likely more pages exist
     if next_page:
         titles.append("➡️ Next page")
         urls.append("next")
@@ -65,11 +58,11 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
     if urls[idx] == "next":
         return search_book(query, page + 1, previous_pages)
     elif urls[idx] == "previous":
-        return search_book(query, page - 1, previous_pages)
+        return search_book(query, max(0, page - 1), previous_pages)
     elif urls[idx] == "search_again":
         return search_book()
     elif urls[idx] == "exit":
         print("Exiting...")
         return None
 
-    return urls[idx]
+    return f"https://tokybook.com{urls[idx]}"
