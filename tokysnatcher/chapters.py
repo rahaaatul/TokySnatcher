@@ -1,25 +1,18 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
-from re import search
 from urllib.parse import urlparse
+import requests
 
-from gazpacho import Soup, get
-from json5 import loads
-
-from .download import download
+from .download import download_all_chapters
 
 logging.basicConfig(
     level=logging.ERROR,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
-
-SKIP_CHAPTER = "https://file.tokybook.com/upload/welcome-you-to-tokybook.mp3"
-MEDIA_URL = "https://files01.tokybook.com/audio/"
-MEDIA_FALLBACK_URL = "https://files02.tokybook.com/audio/"
-SLASH_REPLACE_STRING = " out of "
 
 
 def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
@@ -29,30 +22,55 @@ def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
     ----
         book_url (string): Link to the book.
         custom_folder (path): Custom folder set by user.
-
     """
     logging.debug(f"Fetching chapters for book: {book_url}")  # Log fetching start
 
-    html = get(book_url)
-    soup = Soup(html)
-    js = soup.find("script")
-
-    string = None
-    for script in js:
-        match = search(r"tracks\s*=\s*(\[[^\]]+\])\s*", script.text)
-        if match:
-            string = match.group(1)
-            break
-
-    if not string:
-        logging.error("No tracks found in the provided URL.")
+    # Get book page and extract credentials
+    try:
+        response = requests.get(book_url)
+        response.raise_for_status()
+        html = response.text
+    except Exception as e:
+        logging.error(f"Error fetching book page: {e}")
         return
 
-    json = loads(string)
+    # Extract book ID and token from HTML
+    book_id_match = re.search(r'data-book-id="([^"]*)"', html)
+    token_match = re.search(r'data-token="([^"]*)"', html)
+
+    if not book_id_match or not token_match:
+        logging.error("Could not find book ID or token in the provided URL.")
+        return
+
+    book_id = book_id_match.group(1)
+    token = token_match.group(1)
+
+    headers = {
+        'X-Audiobook-Id': book_id,
+        'X-Playback-Token': token,
+    }
+
+    # Call player API to get track list
+    try:
+        response = requests.get('https://tokybook.com/player', headers=headers)
+        if response.status_code != 200:
+            logging.error(f"Player API returned status {response.status_code}")
+            return
+    except Exception as e:
+        logging.error(f"Error calling player API: {e}")
+        return
+
+    # Extract track sources and titles
+    track_srcs = re.findall(r'data-track-src="([^"]*)"', response.text)
+    track_titles = re.findall(r'data-track-title="([^"]*)"', response.text)
+
+    if not track_srcs or not track_titles:
+        logging.error("No tracks found in player API response.")
+        return
+
     chapters = [
-        {"name": x["name"], "url": x["chapter_link_dropbox"]}
-        for x in json
-        if x["chapter_link_dropbox"] != SKIP_CHAPTER
+        {"name": title.strip(), "url": f"https://tokybook.com{src}"}
+        for src, title in zip(track_srcs, track_titles)
     ]
 
     o = urlparse(book_url)
@@ -67,28 +85,7 @@ def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
         logging.exception(f"Error creating download folder: {e}")
         return
 
-    try:
-        for item in chapters:
-            download(
-                MEDIA_URL + item["url"],
-                download_folder.joinpath(
-                    f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"
-                ),
-            )
-            logging.info(f"Downloaded: {item['name']}")
-    except RuntimeError:
-        logging.exception(f"Error downloading chapter: {item['name']}")
-        logging.debug("Switching to fallback source.")
-        for item in chapters:
-            download(
-                MEDIA_FALLBACK_URL + item["url"],
-                download_folder.joinpath(
-                    f"{SLASH_REPLACE_STRING.join(item['name'].split('/'))}.mp3"
-                ),
-            )
-            logging.info(f"Downloaded: {item['name']}")
-    except OSError as e:
-        logging.exception(f"Error during download: {e}")
-        return
+    # Start downloading chapters
+    download_all_chapters(chapters, headers, download_folder)
 
     print()

@@ -8,6 +8,7 @@ dependencies = [
   "gazpacho==1.1",
   "halo==0.0.31",
   "json5==0.12.0",
+  "pebble==5.1.3",
   "pick==2.4.0",
   "questionary==2.1.1",
   "requests==2.32.3",
