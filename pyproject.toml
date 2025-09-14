@@ -3,13 +3,13 @@ name = "tokysnatcher"
 version = "0.3.2"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
-requires-python = ">=3.7,<=3.13.3"
+requires-python = ">=3.9,<3.15"
 dependencies = [
   "gazpacho==1.1",
   "halo==0.0.31",
   "json5==0.12.0",
   "pick==2.4.0",
-  "questionary==2.1.0",
+  "questionary==2.1.1",
   "requests==2.32.3",
   "tqdm==4.67.1",
   "urllib3==2.4.0",
@@ -26,3 +26,7 @@ classifiers = [
 
 [project.scripts]
 tokysnatcher = 'tokysnatcher.__main__:main'
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
