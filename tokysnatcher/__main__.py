@@ -32,9 +32,18 @@ def main() -> None:
     parser.add_argument(
         "-s", "--search", type=str, default=None, help="Search query to bypass interactive menu"
     )
+    parser.add_argument(
+        "-u", "--url", type=str, default=None, help="Direct URL to download, bypassing search"
+    )
     args = parser.parse_args()
 
     try:
+        # If URL provided, skip everything and download directly
+        if args.url:
+            logging.info("Downloading from provided URL.")
+            get_chapters(args.url, args.directory)
+            return
+
         # If search query provided, skip interactive menu
         if args.search:
             result = search_book(args.search)
