@@ -29,11 +29,22 @@ def main() -> None:
     parser.add_argument(
         "-d", "--directory", type=str, default=None, help="Custom download directory"
     )
+    parser.add_argument(
+        "-s", "--search", type=str, default=None, help="Search query to bypass interactive menu"
+    )
     args = parser.parse_args()
 
-    # Define available choices
-    choices = ["Search book", "Download from URL", "Exit"]
     try:
+        # If search query provided, skip interactive menu
+        if args.search:
+            result = search_book(args.search)
+            if result:
+                logging.info("Action completed successfully.")
+                get_chapters(result, args.directory)
+            return
+
+        # Define available choices
+        choices = ["Search book", "Download from URL", "Exit"]
         selected_action = questionary.select("Choose action:", choices=choices).ask()
 
         if selected_action is None:
