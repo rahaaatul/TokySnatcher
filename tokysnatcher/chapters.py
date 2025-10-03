@@ -52,7 +52,7 @@ def get_chapters(book_url: str, custom_folder: Path | None = None) -> None:
 
     # Call player API to get track list
     try:
-        response = requests.get('https://tokybook.com/player', headers=headers)
+        response = requests.get('https://tokybook.com/post/player', headers=headers)
         if response.status_code != 200:
             logging.error(f"Player API returned status {response.status_code}")
             return
