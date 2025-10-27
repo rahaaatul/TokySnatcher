@@ -4,13 +4,18 @@ import questionary
 import shutil
 import sys
 import logging
+import platform
 
 from .chapters import get_chapters
 from .search import search_book
-import termios
 
-fd: int = sys.stdin.fileno()
-old_term_settings: list[int] = termios.tcgetattr(fd)
+# Terminal settings for Unix-like systems
+if platform.system() != "Windows":
+    import termios
+    fd: int = sys.stdin.fileno()
+    old_term_settings: list[int] = termios.tcgetattr(fd)
+else:
+    termios = None
 
 # Configure logging
 logging.basicConfig(
@@ -105,7 +110,8 @@ def main() -> None:
         logging.error(f"An unexpected error occurred: {e}")
         sys.exit(1)
     finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_term_settings)
+        if termios:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_term_settings)
 
 if __name__ == "__main__":
     main()
