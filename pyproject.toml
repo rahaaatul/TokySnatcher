@@ -1,6 +1,6 @@
 [project]
 name = "tokysnatcher"
-version = "0.3.2"
+version = "0.3.3"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
 requires-python = ">=3.9,<3.15"
@@ -12,7 +12,7 @@ dependencies = [
 
   "questionary==2.1.1",
   "requests==2.32.3",
-  "tqdm==4.67.1",
+  "rich",
   "urllib3==2.4.0",
 ]
 classifiers = [
