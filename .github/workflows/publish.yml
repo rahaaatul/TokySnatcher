@@ -1,0 +1,140 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Release and Publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'pyproject.toml'
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  check-version-and-release:
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.get_version.outputs.new_version }}
+      should_release: ${{ steps.check_version.outputs.should_release }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get current version
+      id: get_version
+      run: |
+        pip install toml
+        NEW_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $NEW_VERSION"
+
+    - name: Get previous version from git tags
+      id: get_prev_version
+      run: |
+        if git describe --tags --abbrev=0 2>/dev/null; then
+          PREV_VERSION=$(git describe --tags --abbrev=0)
+          echo "prev_version=$PREV_VERSION" >> $GITHUB_OUTPUT
+          echo "Previous version: $PREV_VERSION"
+        else
+          echo "No previous tags found, this is first release"
+          echo "prev_version=" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Check if version increased
+      id: check_version
+      run: |
+        NEW="${{ steps.get_version.outputs.new_version }}"
+        PREV="${{ steps.get_prev_version.outputs.prev_version }}"
+
+        if [ -z "$PREV" ]; then
+          echo "First release, proceeding..."
+          echo "should_release=true" >> $GITHUB_OUTPUT
+        else
+          # Simple semver comparison
+          NEW_MAJOR=$(echo $NEW | cut -d. -f1)
+          NEW_MINOR=$(echo $NEW | cut -d. -f2)
+          NEW_PATCH=$(echo $NEW | cut -d. -f3)
+
+          PREV_MAJOR=$(echo $PREV | cut -d. -f1)
+          PREV_MINOR=$(echo $PREV | cut -d. -f2)
+          PREV_PATCH=$(echo $PREV | cut -d. -f3)
+
+          if [ "$NEW_MAJOR" -gt "$PREV_MAJOR" ] || [ "$NEW_MAJOR" -eq "$PREV_MAJOR" -a "$NEW_MINOR" -gt "$PREV_MINOR" ] || [ "$NEW_MAJOR" -eq "$PREV_MAJOR" -a "$NEW_MINOR" -eq "$PREV_MINOR" -a "$NEW_PATCH" -gt "$PREV_PATCH" ]; then
+            echo "Version increased: $PREV -> $NEW"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version did not increase: $PREV -> $NEW"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0  # Don't fail, just don't release
+          fi
+        fi
+
+    - name: Generate release notes
+      id: generate_notes
+      if: steps.check_version.outputs.should_release == 'true'
+      run: |
+        NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
+        PREV_TAG="${{ steps.get_prev_version.outputs.prev_version }}"
+
+        if [ -z "$PREV_TAG" ]; then
+          # First release
+          NOTES="## 🚀 Initial Release v$NEW_VERSION
+
+### Changes
+$(git log --pretty=format:"* %s (%an)" --no-merges | head -20)
+"
+        else
+          # Generate notes from commits since last tag
+          NOTES="## 🚀 Release v$NEW_VERSION
+
+### Changes
+$(git log --pretty=format:"* %s" --no-merges ${PREV_TAG}..HEAD | cat)
+"
+        fi
+
+        # Escape for multiline output
+        {
+          echo 'release_notes<<EOF'
+          echo "$NOTES"
+          echo EOF
+        } >> $GITHUB_OUTPUT
+
+    - name: Create GitHub release
+      if: steps.check_version.outputs.should_release == 'true'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: v${{ steps.get_version.outputs.new_version }}
+        release_name: Release v${{ steps.get_version.outputs.new_version }}
+        body: ${{ steps.generate_notes.outputs.release_notes }}
+
+  deploy:
+    needs: check-version-and-release
+    if: needs.check-version-and-release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.x'
+    - name: Build package
+      run: python -m build
+    - name: Publish package
+      uses: pypa/gh-action-pypi-publish@27b31702a0e7fc50959f5ad993c78deac1bdfc29
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
