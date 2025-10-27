@@ -1,6 +1,6 @@
 [project]
 name = "tokysnatcher"
-version = "0.3.2"
+version = "0.3.4"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
 requires-python = ">=3.9,<3.15"
@@ -12,7 +12,7 @@ dependencies = [
 
   "questionary==2.1.1",
   "requests==2.32.3",
-  "tqdm==4.67.1",
+  "rich",
   "urllib3==2.4.0",
 ]
 classifiers = [
@@ -31,3 +31,13 @@ tokysnatcher = 'tokysnatcher.__main__:main'
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+exclude = [
+    "node_modules",
+    "node_modules/*",
+    "*.venv*",
+    ".venv*",
+    "venv*",
+    "*.egg-info",
+]
