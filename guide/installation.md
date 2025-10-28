@@ -1,8 +1,53 @@
 # Installation
 
-## 📋 Requirements
+## 📋 System Requirements
 
-TokySnatcher requires Python 3.9 or higher and FFmpeg to be installed on your system.
+<Tip>
+TokySnatcher requires **Python 3.9 or higher** and **FFmpeg** to be installed on your system.
+</Tip>
+
+<div class="requirements-grid">
+  <div class="requirement">
+    <h4>🐍 Python</h4>
+    <p>Version 3.9+</p>
+    <code>python --version</code>
+  </div>
+  <div class="requirement">
+    <h4>🎵 FFmpeg</h4>
+    <p>Audio processing</p>
+    <code>ffmpeg -version</code>
+  </div>
+</div>
+
+<style>
+.requirements-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.requirement {
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.requirement h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.2em;
+}
+
+.requirement code {
+  background: var(--vp-c-text-3);
+  color: var(--vp-c-bg);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+</style>
 
 ## 🛠 Installing FFmpeg
 
@@ -35,30 +80,68 @@ winget install ffmpeg
 
 **Other systems**: Install FFmpeg using your package manager
 
-## 🚀 Install TokySnatcher
+## 🚀 Quick Installation
 
-### From PyPI (Recommended)
+### One-Line Install (Recommended)
 ```bash
 pip install tokysnatcher
 ```
 
-### From Source
+### Alternative: Install from Source
+If you want the latest development version:
 ```bash
 pip install git+https://github.com/rahaaatul/TokySnatcher.git
 ```
 
-## ✅ Verify Installation
-
-After installation, verify that TokySnatcher is working:
-
+### Using uv (Modern Package Manager)
 ```bash
-tokysnatcher --version
-# or
-toky --version
+uv pip install tokysnatcher
 ```
 
-::: info
-TokySnatcher provides two command aliases: `tokysnatcher` and `toky`. Both work identically.
+## 🎯 Quick Start
+
+After installation, run TokySnatcher for the first time:
+
+```bash
+# Basic usage
+tokysnatcher
+
+# Or use the short alias
+toky
+```
+
+### First Run Example
+```
+🚀 TokySnatcher - Audiobook Downloader
+
+Choose action:
+❯ Search book
+  Download from URL
+  Exit
+```
+
+## ✅ Verify Your Setup
+
+Ensure everything is working correctly:
+
+### Check Installation
+```bash
+tokysnatcher --version
+# Output: TokySnatcher v0.3.3
+```
+
+### Check FFmpeg
+```bash
+ffmpeg -version | head -1
+# Output: ffmpeg version 6.1.1
+```
+
+::: tip Aliases Available
+TokySnatcher provides two convenient aliases:
+- `tokysnatcher` (full name)
+- `toky` (short alias)
+
+Both commands work identically!
 :::
 
 ## 🐛 Troubleshooting

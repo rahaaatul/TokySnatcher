@@ -1,0 +1,165 @@
+/* Custom styles for TokySnatcher documentation */
+
+:root {
+  --vp-c-brand-1: #3b82f6;
+  --vp-c-brand-2: #1d4ed8;
+  --vp-c-brand-3: #1e40af;
+  --vp-c-text-1: #1f2937;
+  --vp-c-text-2: #374151;
+  --vp-c-text-3: #6b7280;
+  --vp-c-border: #e5e7eb;
+  --vp-c-divider: #f3f4f6;
+  --vp-c-bg-alt: #f9fafb;
+}
+
+/* Hero section enhancements */
+.VPHero .VPImage {
+  filter: drop-shadow(0 8px 24px rgba(59, 130, 246, 0.3));
+}
+
+/* Feature cards styling */
+.VPFeatures .VPFeature {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.02) 0%, rgba(59, 130, 246, 0.05) 100%);
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  padding: 1.5rem;
+}
+
+.VPFeatures .VPFeature:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.15);
+  border-color: var(--vp-c-brand-1);
+}
+
+.VPFeatures .VPFeature .icon {
+  background: linear-gradient(135deg, var(--vp-c-brand-1), var(--vp-c-brand-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-size: 2.5em;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+/* Code blocks styling */
+.vp-code-block {
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.vp-code-block .vp-code-bg {
+  background: linear-gradient(to bottom, #1e1e1e, #2a2a2a);
+}
+
+/* Navigation bar */
+.VPNavBar .container {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.8);
+  border-bottom: 1px solid var(--vp-c-border);
+}
+
+/* Sidebar enhancements */
+.VPSidebarItem .item .text {
+  transition: color 0.2s ease;
+}
+
+.VPSidebarItem .item:hover .text {
+  color: var(--vp-c-brand-1);
+}
+
+/* Footer styling */
+.VPFooter {
+  border-top: 2px solid var(--vp-c-brand-1);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.02) 0%, rgba(59, 130, 246, 0.05) 100%);
+}
+
+/* Custom gradients for headings */
+h1, h2, h3 {
+  background: linear-gradient(135deg, var(--vp-c-brand-1), var(--vp-c-brand-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+h1 {
+  background: linear-gradient(135deg, var(--vp-c-brand-1), var(--vp-c-brand-3));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Button enhancements */
+.VPButton {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.VPButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.3);
+}
+
+/* Dark mode adjustments */
+.dark {
+  --vp-c-text-1: #f9fafb;
+  --vp-c-text-2: #e5e7eb;
+  --vp-c-text-3: #d1d5db;
+  --vp-c-border: #374151;
+  --vp-c-divider: #4b5563;
+  --vp-c-bg-alt: #111827;
+}
+
+.dark .VPFeatures .VPFeature {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border-color: var(--vp-c-border);
+}
+
+.dark .VPFooter {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.03) 0%, rgba(59, 130, 246, 0.08) 100%);
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .VPFeatures .VPFeature {
+    margin-bottom: 1rem;
+  }
+
+  .VPFeatures .VPFeature:hover {
+    transform: none;
+  }
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.loading {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vp-c-bg-alt);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-text-3);
+}
