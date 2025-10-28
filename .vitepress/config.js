@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'TokySnatcher',
   description: 'Modern audiobook downloader for TokyBook with real-time progress tracking',
   base: '/TokySnatcher/', // This will be the base path for GitHub Pages
+  outDir: './dist', // Build to root dist folder for GitHub Actions
   ignoreDeadLinks: true, // Ignore all dead link checks for now
   head: [
     ['meta', { name: 'theme-color', content: '#3b82f6' }],
