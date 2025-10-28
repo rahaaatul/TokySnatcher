@@ -1,42 +1,123 @@
 # TokySnatcher 🤫
 
-> Snatch audiobooks from Tokybook 😈
+> > Snatch audiobooks from Tokybook 😈
 
-## Installation
+## 📋 Requirements
 
-1. Open terminal, then run:
+- Python 3.9 or higher
+- **FFmpeg** (required for v0.3.3+) - Must be installed and available in your system PATH
 
-    ```shell
-    pip install tokysnatcher
-    ```
+### Installing FFmpeg
 
-    or
+#### macOS
+```shell
+brew install ffmpeg
+```
 
-    ```shell
-    pip install git+https://github.com/rahaaatul/TokySnatcher.git
-    ```
+#### Linux
+```shell
+sudo apt update && sudo apt install ffmpeg
+```
 
-2. Run TokySnatcher
+#### Windows
 
-    ```sh
-    tokysnatcher
-    ```
+##### Choco
+```powershell
+choco install ffmpeg
+```
 
-## Usage
+##### Scoop
+```powershell
+scoop install ffmpeg
+```
 
-- In command line invoke `-h` for help:
+##### Winget
 
-    ```shell
-    tokysnatcher -h
-    ```
+```powershell
+winget install ffmpeg
+```
 
-- Invoke `-d` or `--directory` to add a custom directory
+**Other systems**: Install FFmpeg using your package manager
 
-    ```shell
-    tokysnatcher -d "C:\Users\User\Music"
-    ```
+## 🛠 Installation
 
-> [!NOTE]
->
-> - If `-d` or `--directory` is not invoked, TokySnatcher will download the books in current directory.
+```shell
+pip install tokysnatcher
+```
+
+Or install from source:
+```shell
+pip install git+https://github.com/rahaaatul/TokySnatcher.git
+```
+
+## 🎯 Usage
+
+### Interactive Mode (Default)
+Run TokySnatcher for the full interactive experience:
+```bash
+tokysnatcher
+```
+
+or
+
+```bash
+toky
+```
+You'll be prompted to search for books or enter a direct URL.
+
+### Direct Download
+Download directly from a TokyBook URL:
+```bash
+tokysnatcher --url "https://tokybook.com/book/your-book-url"
+```
+
+### Search and Download (Automated)
+Perform a search and download without interactive prompts:
+```bash
+tokysnatcher --search "book title"
+```
+
+### Custom Download Directory
+Specify where to save your audiobooks:
+```bash
+tokysnatcher --directory "/path/to/your/audiobooks"
+```
+
+Combine options:
+```bash
+tokysnatcher --search "science fiction" --directory "~/Audiobooks/"
+```
+
+### Command Help
+```bash
+tokysnatcher --help
+```
+
+## 📊 Features
+
+- **🔍 Smart Search**: Search TokyBook's extensive audiobook library
+- **📥 Batch Downloads**: Download entire audiobooks with multiple chapters
+- **📊 Progress Tracking**: Real-time download progress with percentage, time estimates, and status icons
+- **🔧 CLI Automation**: Direct URL and search arguments for scripting and automation
+- **🌐 Cross-Platform**: Works on Windows, macOS, and Linux
+- **🎵 High Quality**: Outputs to MP3 format using FFmpeg
+
+## Example Screenshot
+
+```
+🚀 Downloading audiobooks (5/12 chapters) 📝 🔄 Running: 1, ⏳ Ready: 4, ✅ Done: 6
+
+⏳ Speed and Scale                                                 1/? Sweated... 2024
+⏳ Building a Second Brain 2/? The Three Stages of Saving...        0MB / 15.2MB
+✅ Speed and Scale 1/? The Problem with Scale...                   12.4MB / 12.4MB
+✅ Building a Second Brain 1/? What is a Second Brain?...          8.9MB / 8.9MB
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 >

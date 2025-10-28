@@ -1,0 +1,25 @@
+{
+  "name": "tokysnatcher-docs",
+  "version": "1.0.0",
+  "description": "Documentation for TokySnatcher - Snatch audiobooks from Tokybook 😈",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev",
+    "docs:build": "vitepress build",
+    "docs:preview": "vitepress preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahaaatul/TokySnatcher.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/rahaaatul/TokySnatcher/issues"
+  },
+  "homepage": "https://github.com/rahaaatul/TokySnatcher#readme",
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}

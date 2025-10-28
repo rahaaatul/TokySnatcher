@@ -27,6 +27,7 @@ classifiers = [
 
 [project.scripts]
 tokysnatcher = 'tokysnatcher.__main__:main'
+toky = 'tokysnatcher.__main__:main'
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
