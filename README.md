@@ -21,17 +21,17 @@ sudo apt update && sudo apt install ffmpeg
 
 #### Windows
 
-##### Choco
+- Choco
 ```powershell
 choco install ffmpeg
 ```
 
-##### Scoop
+- Scoop
 ```powershell
 scoop install ffmpeg
 ```
 
-##### Winget
+- Winget
 
 ```powershell
 winget install ffmpeg
@@ -101,17 +101,6 @@ tokysnatcher --help
 - **🔧 CLI Automation**: Direct URL and search arguments for scripting and automation
 - **🌐 Cross-Platform**: Works on Windows, macOS, and Linux
 - **🎵 High Quality**: Outputs to MP3 format using FFmpeg
-
-## Example Screenshot
-
-```
-🚀 Downloading audiobooks (5/12 chapters) 📝 🔄 Running: 1, ⏳ Ready: 4, ✅ Done: 6
-
-⏳ Speed and Scale                                                 1/? Sweated... 2024
-⏳ Building a Second Brain 2/? The Three Stages of Saving...        0MB / 15.2MB
-✅ Speed and Scale 1/? The Problem with Scale...                   12.4MB / 12.4MB
-✅ Building a Second Brain 1/? What is a Second Brain?...          8.9MB / 8.9MB
-```
 
 ## 🤝 Contributing
 

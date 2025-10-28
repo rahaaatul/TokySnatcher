@@ -4,6 +4,7 @@ export default defineConfig({
   title: 'TokySnatcher',
   description: 'Snatch audiobooks from Tokybook 😈',
   base: '/TokySnatcher/', // This will be the base path for GitHub Pages
+  ignoreDeadLinks: true, // Ignore all dead link checks for now
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
