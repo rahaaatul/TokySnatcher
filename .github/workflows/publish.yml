@@ -88,25 +88,23 @@ jobs:
         PREV_TAG="${{ steps.get_prev_version.outputs.prev_version }}"
 
         if [ -z "$PREV_TAG" ]; then
-          # First release
-          NOTES="## 🚀 Initial Release v$NEW_VERSION
-
-### Changes
-$(git log --pretty=format:"* %s (%an)" --no-merges | head -20)
-"
+          # First release - get recent commits
+          echo "## 🚀 Initial Release v${NEW_VERSION}" > release_notes.txt
+          echo "" >> release_notes.txt
+          echo "### Changes" >> release_notes.txt
+          git log --pretty=format:"* %s (%an)" --no-merges | head -20 >> release_notes.txt
         else
           # Generate notes from commits since last tag
-          NOTES="## 🚀 Release v$NEW_VERSION
-
-### Changes
-$(git log --pretty=format:"* %s" --no-merges ${PREV_TAG}..HEAD | cat)
-"
+          echo "## 🚀 Release v${NEW_VERSION}" > release_notes.txt
+          echo "" >> release_notes.txt
+          echo "### Changes" >> release_notes.txt
+          git log --pretty=format:"* %s" --no-merges ${PREV_TAG}..HEAD >> release_notes.txt
         fi
 
-        # Escape for multiline output
+        # Write as multiline output
         {
           echo 'release_notes<<EOF'
-          echo "$NOTES"
+          cat release_notes.txt
           echo EOF
         } >> $GITHUB_OUTPUT
 
