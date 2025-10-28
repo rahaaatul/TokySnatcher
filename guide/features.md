@@ -66,27 +66,19 @@ Audio processing powered by industry-standard tools:
 - **Quality preservation**: Maintains original audio quality where possible
 - **Metadata support**: Chapter naming and book information
 
-## 🏗️ Key Technologies
+## 🚀 Getting Started
 
-### Core Dependencies
-- **Python 3.9+**: Modern Python with excellent performance
-- **FFmpeg**: Industry-standard audio/video processing
-- **Requests**: Reliable HTTP client for downloads
-- **Rich**: Beautiful terminal interface components
+Ready to start using TokySnatcher? Here's the quick start guide:
 
-### Library Highlights
+1. **Install** FFmpeg and TokySnatcher (see [Installation](./installation.md))
+2. **Run** `tokysnatcher` for the interactive experience
+3. **Search** or **enter URL** of the book you want
+4. **Download** and enjoy your audiobooks!
 
-#### [`gazpacho`](https://github.com/maxhumber/gazpacho) - HTML Parsing
-Lightweight and familiar web scraping library that works like BeautifulSoup but with a different API.
+## 📖 For More Details
 
-#### [`halo`](https://github.com/manrajgrover/halo) - Progress Spinners
-Beautiful spinners for terminal applications with custom frames, colors, and text.
-
-#### [`questionary`](https://github.com/tmbo/questionary) - Interactive Prompts
-Powerful library for interactive command-line prompts and questions.
-
-#### [`pebble`](https://github.com/noxdafox/pebble) - Thread Pool
-Excellent library for managing concurrent threads with proper error handling.
+- **[Usage Guide](./usage.md)** - Complete usage instructions
+- **[API Reference](../api/cli.md)** - Technical details and APIs
 
 ## 🎯 Use Cases
 

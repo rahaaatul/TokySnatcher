@@ -2,6 +2,24 @@
 
 This page documents all available command-line options and arguments for TokySnatcher.
 
+## Core Dependencies & Technical Details
+
+### Dependencies
+- **Python 3.9+**: Modern Python with excellent performance
+- **FFmpeg**: Industry-standard audio/video processing (required)
+- **Requests**: Reliable HTTP client for downloads
+- **Rich**: Beautiful terminal interface components
+- **Gazpacho**: Lightweight HTML parsing library
+- **Halo**: Terminal progress spinners
+- **Questionary**: Interactive command-line prompts
+- **Pebble**: Concurrent thread pool management
+
+### Architecture
+- **Scraping Engine**: Custom HTML parsing with gazpacho
+- **Download Manager**: Multi-threaded HLS stream processing with FFmpeg
+- **Progress Tracking**: Real-time status with Rich library components
+- **UI Framework**: Interactive menus using questionary
+
 ## Command Syntax
 
 ```bash
