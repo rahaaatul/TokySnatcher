@@ -1,8 +1,8 @@
+import questionary
 from urllib.parse import quote
 
 from gazpacho import Soup, get
 from halo import Halo
-from pick import pick
 
 
 def fetch_results(query: str, page: int = 1):
@@ -53,7 +53,9 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
     titles.append("❌ Exit")
     urls.append("exit")
 
-    _, idx = pick(titles, "Search results:", indicator="*")
+    choice = questionary.select("Search results:", choices=titles).ask()
+
+    idx = titles.index(choice)
 
     if urls[idx] == "next":
         return search_book(query, page + 1, previous_pages)
