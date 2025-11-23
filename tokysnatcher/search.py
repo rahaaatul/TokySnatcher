@@ -1,15 +1,31 @@
 import questionary
+import requests
 from urllib.parse import quote
 
-from gazpacho import Soup, get
 from halo import Halo
 
 
 def fetch_results(query: str, page: int = 1):
-    SEARCH_URL = f"https://tokybook.com/search/more?q={quote(query)}&page={page-1}"
-    html = get(SEARCH_URL)
-    soup = Soup(html)
-    return soup
+    """Fetch search results from the JSON API"""
+    API_URL = "https://tokybook.com/api/v1/search"
+
+    # Use pagination: each page gets 12 results
+    offset = (page - 1) * 12
+    limit = 12
+
+    payload = {
+        "query": query,
+        "offset": offset,
+        "limit": limit
+    }
+
+    try:
+        response = requests.post(API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Error fetching search results: {e}")
+        return {"content": [], "totalHits": 0}
 
 
 def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
@@ -23,23 +39,37 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
     spinner.start()
 
     if page in previous_pages:
-        soup = previous_pages[page]
+        api_response = previous_pages[page]
     else:
-        soup = fetch_results(query, page)
-        previous_pages[page] = soup
+        api_response = fetch_results(query, page)
+        previous_pages[page] = api_response
 
-    results = soup.find("div", {"class": "book-card"})
+    results = api_response.get("content", [])
 
-    if not isinstance(results, list):
+    if not results:
         print("No results found. Exiting...")
         spinner.stop()
         return None
 
-    titles = [f"📖 {x.text}" for x in results]
-    urls = [x.find("a").attrs.get("href") for x in results]
+    # Extract titles and URLs from the JSON response
+    # Assuming each book object has 'title' field and 'dynamicSlugId' for URL
+    titles = []
+    urls = []
 
-    next_page = len(results) == 10  # If we got 10 results, likely more pages exist
-    if next_page:
+    for book in results:
+        title = book.get("title", "Unknown Title")
+        book_id = book.get("bookId", book.get("dynamicSlugId", book.get("id", "")))
+        if book_id:
+            display_title = f"📖 {title}"
+            titles.append(display_title)
+            urls.append(book_id)
+
+    # Check if there are more pages available
+    current_offset = (page - 1) * 12
+    total_results = api_response.get("totalHits", 0)
+    has_more_results = current_offset + len(results) < total_results
+
+    if has_more_results:
         titles.append("➡️ Next page")
         urls.append("next")
 
@@ -67,4 +97,6 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
         print("Exiting...")
         return None
 
-    return f"https://tokybook.com{urls[idx]}"
+    # Return the full URL for the selected book
+    selected_book_id = urls[idx]
+    return f"https://tokybook.com/{selected_book_id}"
