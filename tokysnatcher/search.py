@@ -28,7 +28,7 @@ def fetch_results(query: str, page: int = 1):
         return {"content": [], "totalHits": 0}
 
 
-def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
+def search_book(query: str = None, page: int = 1, previous_pages: dict = None, interactive: bool = True):
     if previous_pages is None:
         previous_pages = {}
 
@@ -77,7 +77,18 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
         titles.append("⬅️ Previous page")
         urls.append("previous")
 
+    print("Search results:")
+    for title in titles[:len(results)]:
+        print(title)
+
     spinner.stop()
+
+    if not interactive:
+        if urls:
+            return f"https://tokybook.com/post/{urls[0]}"
+        else:
+            return None
+
     titles.append("🔍 Search again")
     urls.append("search_again")
     titles.append("❌ Exit")
@@ -88,15 +99,15 @@ def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
     idx = titles.index(choice)
 
     if urls[idx] == "next":
-        return search_book(query, page + 1, previous_pages)
+        return search_book(query, page + 1, previous_pages, interactive)
     elif urls[idx] == "previous":
-        return search_book(query, max(0, page - 1), previous_pages)
+        return search_book(query, max(0, page - 1), previous_pages, interactive)
     elif urls[idx] == "search_again":
-        return search_book()
+        return search_book(None, 1, {}, interactive)
     elif urls[idx] == "exit":
         print("Exiting...")
         return None
 
     # Return the full URL for the selected book
     selected_book_id = urls[idx]
-    return f"https://tokybook.com/{selected_book_id}"
+    return f"https://tokybook.com/post/{selected_book_id}"
