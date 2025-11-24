@@ -175,6 +175,7 @@ TODO.md
 # uv lock file
 uv.lock
 
-# Development scripts (local tooling)
+# local
+backups/
 scripts/
 analysis/
