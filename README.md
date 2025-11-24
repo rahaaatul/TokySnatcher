@@ -38,5 +38,6 @@
 
 > [!NOTE]
 >
-> - If `-d` or `--directory` is not invoked, TokySnatcher will download the books in current directory.
+> - By default, TokySnatcher saves audiobooks to your system's Music folder in an "Audiobooks" subfolder (e.g., `C:\Users\User\Music\Audiobooks\` on Windows)
+> - Use `-d` or `--directory` to specify a custom location
 >
