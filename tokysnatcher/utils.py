@@ -1,0 +1,220 @@
+"""Unified utilities for TokySnatcher - logging and progress display."""
+
+import logging
+import os
+import time
+from rich.console import Console
+from rich.progress import (
+    Progress,
+    BarColumn,
+    TextColumn,
+)
+from rich.text import Text
+
+
+# Custom logging levels
+SUCCESS_LEVEL_NUM = 25  # Between INFO (20) and WARNING (30)
+TRACE_LEVEL_NUM = 5  # Below DEBUG (10)
+logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
+logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
+
+
+# Custom logging functions that use standard logging.log
+def log_success(message, *args, **kws):
+    """Log success message directly."""
+    logging.log(SUCCESS_LEVEL_NUM, message, *args, **kws)
+
+
+def log_trace(message, *args, **kws):
+    """Log trace message directly."""
+    logging.log(TRACE_LEVEL_NUM, message, *args, **kws)
+
+
+# Add to logging module for compatibility
+logging.success = log_success
+logging.trace = log_trace
+
+
+# Formatting constants
+LOG_LEVEL_COLORS = {
+    "TRACE": "dim white",
+    "DEBUG": "white",
+    "INFO": "blue",
+    "WARNING": "yellow",
+    "ERROR": "red",
+    "SUCCESS": "green",
+}
+
+TIME_COLOR = "green"
+LOCATION_COLOR = "dim"
+
+
+class LogCapture(logging.Handler):
+    """Print logs immediately with Rich formatting."""
+
+    def __init__(self, console: Console):
+        super().__init__()
+        self.console = console
+        self.setLevel(TRACE_LEVEL_NUM)  # Show TRACE and all higher levels
+
+    def _format_timestamp(self, created: float) -> str:
+        """Format timestamp with milliseconds."""
+        timestamp = time.strftime("%H:%M:%S", time.localtime(created))
+        milliseconds = f"{int((created % 1) * 1000):03d}"
+        return f"{timestamp}.{milliseconds}"
+
+    def _get_level_style(self, level_name: str) -> str:
+        """Get styled level name for output - use same color as message."""
+        level_name_upper = level_name.upper()
+        message_color = LOG_LEVEL_COLORS.get(level_name_upper, "white")
+        if level_name_upper == "CRITICAL":
+            return f"[white on #ffcccc]{level_name_upper}[/white on #ffcccc]"
+        else:
+            return f"[{message_color}]{level_name_upper}[/{message_color}]"
+
+    def _build_log_line(
+        self, time_part: str, level_part: str, file_part: str, message_part: str
+    ) -> str:
+        """Build the complete log line."""
+        return f"{time_part} {level_part} {file_part} - {message_part}"
+
+    def emit(self, record):
+        """Print log records immediately with Rich formatting."""
+        try:
+            # TIME (green)
+            time_part = f"[{TIME_COLOR}]{self._format_timestamp(record.created)}[/]"
+
+            # Level styling
+            level_part = self._get_level_style(record.levelname)
+
+            # Location info (dim)
+            filename = os.path.basename(getattr(record, "filename", "unknown")).replace(
+                ".py", ""
+            )
+            lineno = getattr(record, "lineno", "unknown")
+            location = f"{filename}:{lineno}"
+            file_part = f"[{LOCATION_COLOR}]{location}[/]"
+
+            # Message content
+            message = record.getMessage()
+            message_color = LOG_LEVEL_COLORS.get(record.levelname.upper(), "white")
+            if record.levelname.upper() == "CRITICAL":
+                message_part = f"[white on #ffcccc]{message}[/white on #ffcccc]"
+            elif record.levelname.upper() == "WARNING":
+                # Ensure warning color is explicitly set to yellow
+                message_part = f"[{message_color}]{message}[/{message_color}]"
+            else:
+                message_part = f"[{message_color}]{message}[/]"
+
+            # Combine and print
+            log_line = self._build_log_line(
+                time_part, level_part, file_part, message_part
+            )
+            self.console.print(log_line)
+
+        except Exception as e:
+            # Fallback for formatting errors
+            fallback_msg = f"[ERROR FORMATTING LOG: {e}] {record.getMessage()}"
+            self.console.print(fallback_msg)
+
+
+# Progress display utilities
+def format_elapsed_time(seconds: float) -> str:
+    """Format elapsed time as HH:MM:SS or MM:SS."""
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, seconds = divmod(remainder, 60)
+
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    else:
+        return f"{minutes:02d}:{seconds:02d}"
+
+
+class CustomTimeColumn(TextColumn):
+    """Custom time column that shows elapsed time only for started chapters."""
+
+    def __init__(self):
+        super().__init__("{task.fields[elapsed_time]}")
+
+    def render(self, task):
+        """Render the time column."""
+        start_time = task.fields.get("start_time")
+        if start_time is None:
+            return Text("")  # Empty for pending chapters
+
+        elapsed = time.time() - start_time
+        formatted_time = format_elapsed_time(elapsed)
+        return Text(formatted_time, style="cyan")
+
+
+class CustomEmojiColumn(TextColumn):
+    """Custom emoji column for chapter status."""
+
+    def __init__(self):
+        super().__init__("{task.fields[emoji]}")
+
+    def render(self, task):
+        """Render the emoji column."""
+        emoji = task.fields.get("emoji", "?")
+        return Text(emoji)
+
+
+class CustomNameColumn(TextColumn):
+    """Custom name column for chapter names."""
+
+    def __init__(self):
+        super().__init__("{task.fields[name]}")
+
+    def render(self, task):
+        """Render the name column."""
+        name = task.fields.get("name", "")
+        return Text(name)
+
+
+def create_progress_display() -> Progress:
+    """Create the progress display with custom columns."""
+    return Progress(
+        CustomEmojiColumn(),
+        CustomNameColumn(),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        CustomTimeColumn(),
+        console=Console(),
+    )
+
+
+# Global flag for immediate shutdown - TODO: move to a better location
+_shutdown_requested = False
+
+
+def setup_colored_logging(verbose_logging: bool = False) -> None:
+    """Set up unified Rich colored logging for the entire application.
+
+    Args:
+        verbose_logging: Whether to enable Rich LogCapture formatting
+    """
+    # Always clear existing handlers first
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    if verbose_logging:
+        console = Console()
+        log_capture = LogCapture(console)
+
+        # Configure logging to show ALL messages with ZERO suppression
+        root_logger.addHandler(log_capture)
+        root_logger.setLevel(TRACE_LEVEL_NUM)  # Show everything including TRACE
+
+        # NO log suppression in verbose mode - show ALL logs for debugging
+        logging.info(
+            "TokySnatcher VERBOSE logging enabled - ALL logs visible (no suppression)"
+        )
+    else:
+        # For non-verbose mode, suppress all logging output by adding a NullHandler
+        # This ensures only progress bars are shown without any informational output
+        null_handler = logging.NullHandler()
+        root_logger.addHandler(null_handler)
+        root_logger.setLevel(
+            logging.WARNING
+        )  # Still suppress INFO/DEBUG even if we had to add a handler
