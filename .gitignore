@@ -171,3 +171,11 @@ ruff.toml
 # Development docs
 audit.md
 TODO.md
+
+# uv lock file
+uv.lock
+
+# local
+backups/
+scripts/
+analysis/

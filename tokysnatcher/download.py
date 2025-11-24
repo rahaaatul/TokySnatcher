@@ -1,265 +1,273 @@
 import logging
 import re
-import subprocess
-import tempfile
-import threading
+import requests
 import time
 from pathlib import Path
+from rich.console import Console, Group
+from rich.live import Live
+from rich.text import Text
+from . import utils
 
-from pebble import ThreadPool
-from rich.progress import Progress
-
-SLASH_REPLACE_STRING = " out of "
-
-# Global flag for immediate shutdown
-_shutdown_requested = False
+# Global flag for immediate shutdown - use the one from utils
+_shutdown_requested = utils._shutdown_requested
 
 
-class SharedProgressTracker:
-    """Advanced tracker for cumulative and individual chapter progress with Rich."""
+def _create_standardized_filename(chapter_index: int, book_title: str) -> str:
+    """Create standardized filename for a chapter using book title."""
+    chapter_num = str(chapter_index + 1).zfill(2)
 
-    def __init__(self, progress: Progress, chapters: list[dict]):
-        self.progress = progress
-        self.chapters = chapters
-        self.total_chapters = len(chapters)
+    # Apply title case to book title
+    title_case_book_title = book_title.title()
 
-        # Track individual chapter tasks and their states
-        self.chapter_tasks = {}  # chapter_index -> task_id
-        self.chapter_states = {}  # chapter_index -> 'queued'|'running'|'complete'
-        self.chapter_start_times = {}  # chapter_index -> start_time
-        self.completed_count = 0
-        self.running_count = 0
-        self.lock = threading.Lock()
+    return f"{chapter_num} - {title_case_book_title}"
 
-        # Create overall progress task
-        self.overall_task = self.progress.add_task(
-            f"[bold blue]Downloading [/bold blue]{self.total_chapters} chapters",
-            total=100.0,
+
+def _parse_hls_playlist(playlist_url: str, headers: dict) -> list[str]:
+    """Parse HLS playlist and return list of segment URLs."""
+    import traceback
+
+    logger = logging.getLogger(__name__)
+
+    logging.trace(f"Request headers: {headers}")
+
+    headers_copy = headers.copy()
+    headers_copy["X-Track-Src"] = playlist_url.replace("https://tokybook.com", "")
+
+    logging.trace(f"Modified headers for X-Track-Src: {headers_copy}")
+
+    try:
+        response = requests.get(playlist_url, headers=headers_copy, timeout=30)
+        logging.trace(f"HTTP {response.status_code} from {playlist_url}")
+        logging.trace(f"Response headers: {dict(response.headers)}")
+
+        response.raise_for_status()
+
+        playlist_text = response.text
+        logging.trace(
+            f"Playlist content ({len(playlist_text)} chars): {playlist_text[:200]}..."
         )
 
-        # Initialize individual chapter tasks
-        for i, chapter in enumerate(chapters):
-            clean_name = SLASH_REPLACE_STRING.join(chapter["name"].split("/"))
-            task_id = self.progress.add_task(
-                f"[dim]⏳ [/dim]{clean_name}.mp3",
-                total=100.0,
-                visible=False,  # Hide until started
-            )
-            self.chapter_tasks[i] = task_id
-            self.chapter_states[i] = "queued"
+        base_url = playlist_url.rsplit("/", 1)[0] + "/"
+        logging.trace(f"Base URL for relative segments: {base_url}")
 
-    def start_chapter(self, chapter_index: int):
-        """Mark chapter as started and show its progress."""
-        with self.lock:
-            if chapter_index not in self.chapter_states:
-                return
-
-            task_id = self.chapter_tasks[chapter_index]
-            self.progress.update(
-                task_id,
-                description=f"[blue]⏳ [/blue]{self._get_truncated_name(chapter_index)}",
-                visible=True,
-            )
-            self.chapter_states[chapter_index] = "running"
-            self.running_count += 1
-            self._update_overall()
-
-    def update_individual_progress(self, chapter_index: int, progress_fraction: float):
-        """Update progress for a specific chapter."""
-        # Don't update progress if shutdown was requested
-        if _shutdown_requested:
-            return
-
-        with self.lock:
-            if chapter_index not in self.chapter_tasks:
-                return
-
-            task_id = self.chapter_tasks[chapter_index]
-            completed = progress_fraction * 100
-
-            # Update description based on progress
-            if completed < 100:
-                desc = f"[blue]🔄 [/blue]{self._get_truncated_name(chapter_index)}"
-            else:
-                desc = f"[green]✓ [/green]{self._get_truncated_name(chapter_index)}"
-                self._complete_chapter(chapter_index)
-
-            self.progress.update(task_id, completed=completed, description=desc)
-            self._update_overall()
-
-    def complete_chapter(self, chapter_index: int, success: bool):
-        """Mark chapter as completed."""
-        with self.lock:
+        segments = []
+        for line in playlist_text.splitlines():
+            line = line.strip()
             if (
-                chapter_index in self.chapter_states
-                and self.chapter_states[chapter_index] == "running"
+                line
+                and not line.startswith("#")
+                and (line.startswith("http") or line.startswith("https"))
             ):
-                task_id = self.chapter_tasks[chapter_index]
-                status = "✓" if success else "✗"
-                color = "green" if success else "red"
-                self.progress.update(
-                    task_id,
-                    completed=100.0,
-                    description=f"[{color}]{status} [/{color}]{self._get_truncated_name(chapter_index)}",
+                logging.trace(f"Absolute segment URL: {line}")
+                segments.append(line)
+            elif line and not line.startswith("#") and not line.startswith("http"):
+                full_url = base_url + line
+                logging.trace(f"Relative segment URL resolved: {line} → {full_url}")
+                segments.append(full_url)
+
+        logging.trace(f"Found {len(segments)} total segments")
+        if not segments:
+            raise ValueError("No segments found in HLS playlist")
+
+        logging.success(f"Successfully parsed {len(segments)} segments for chapter")
+        return segments
+
+    except requests.HTTPError as e:
+        logger.error(f"HTTP {e.response.status_code} for playlist URL: {playlist_url}")
+        logger.error(
+            f"Response headers: {dict(e.response.headers) if hasattr(e.response, 'headers') else 'None'}"
+        )
+        logger.error(
+            f"Response body: {e.response.text[:500] if hasattr(e.response, 'text') else 'None'}"
+        )
+        raise
+    except requests.RequestException as e:
+        logger.error(f"Network error fetching playlist: {playlist_url}")
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error parsing playlist: {playlist_url}")
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        raise
+
+
+def download_segments_sequential(
+    segments: list[str],
+    mp3_filename: Path,
+    download_headers: dict,
+    item: dict,
+    chapter_index: int,
+    total_segments: int,
+    progress_callback: callable | None = None,
+) -> bool:
+    """Download HLS segments sequentially and write to file."""
+    downloaded_segments = [0]  # Use list to allow modification in nested function
+
+    with mp3_filename.open("wb") as f:
+        for segment_url in segments:
+            if _shutdown_requested:
+                if mp3_filename.exists():
+                    mp3_filename.unlink()
+                return False
+
+            # Add X-Track-Src for each segment
+            seg_headers = download_headers.copy()
+            seg_headers["X-Track-Src"] = segment_url.replace("https://tokybook.com", "")
+
+            # Log each TS segment URL being downloaded
+            logging.trace(f"Downloading TS segment: {segment_url}")
+
+            seg_response = requests.get(
+                segment_url, headers=seg_headers, stream=True, timeout=30
+            )
+            seg_response.raise_for_status()
+
+            # Write segment data
+            for chunk in seg_response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+            # Update progress
+            downloaded_segments[0] += 1
+            progress_pct = int((downloaded_segments[0] / total_segments) * 100)
+            if progress_callback is None:
+                logging.info(
+                    f"Downloaded segment {downloaded_segments[0]}/{total_segments} for {item['name']} - {progress_pct}% complete"
                 )
-                self.chapter_states[chapter_index] = "complete"
-                self.completed_count += 1
-                if (
-                    chapter_index in self.chapter_states
-                    and self.chapter_states[chapter_index] == "running"
-                ):
-                    self.running_count -= 1
-                self._update_overall()
+            else:
+                progress_callback(
+                    chapter_index,
+                    progress_pct,
+                    downloaded_segments[0] == total_segments,
+                )
 
-    def _complete_chapter(self, chapter_index: int):
-        """Internal method to mark chapter as complete when progress reaches 100%."""
-        if self.chapter_states.get(chapter_index) == "running":
-            self.chapter_states[chapter_index] = "complete"
-            self.completed_count += 1
-            self.running_count -= 1
+    return True
 
-    def _update_overall(self):
-        """Update the overall progress display."""
-        overall_progress = (self.completed_count / self.total_chapters) * 100
 
-        # Detailed status description
-        status_parts = []
-        queued_count = sum(
-            1 for state in self.chapter_states.values() if state == "queued"
+def download_segments_concurrent(
+    segments: list[str],
+    mp3_filename: Path,
+    download_headers: dict,
+    item: dict,
+    chapter_index: int,
+    total_segments: int,
+    progress_callback: callable | None = None,
+    max_concurrent_segments: int = 4,
+) -> bool:
+    """Download HLS segments concurrently and write to file."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import threading
+
+    downloaded_segments = [0]  # Use list to allow modification in nested function
+    segment_data = [
+        None
+    ] * total_segments  # List to store segment data in correct order
+    progress_lock = threading.Lock()
+
+    def download_segment(segment_index, segment_url):
+        if _shutdown_requested:
+            return None
+
+        # Add X-Track-Src for each segment
+        seg_headers = download_headers.copy()
+        seg_headers["X-Track-Src"] = segment_url.replace("https://tokybook.com", "")
+
+        # Log each TS segment URL being downloaded
+        logging.trace(f"Downloading TS segment: {segment_url}")
+
+        seg_response = requests.get(
+            segment_url, headers=seg_headers, stream=True, timeout=30
         )
+        seg_response.raise_for_status()
 
-        if queued_count > 0:
-            status_parts.append(f"⏳ Ready: {queued_count}")
-        if self.running_count > 0:
-            status_parts.append(f"🔄 Running: {self.running_count}")
-        if self.completed_count > 0:
-            status_parts.append(f"✅ Done: {self.completed_count}")
+        # Read all segment data with shutdown checks
+        data = b""
+        for chunk in seg_response.iter_content(chunk_size=8192):
+            if _shutdown_requested:
+                return None  # Abort this segment
+            if chunk:
+                data += chunk
 
-        status_str = " | ".join(status_parts) if status_parts else ""
+        # Store data in correct position and update progress
+        segment_data[segment_index] = data
 
-        self.progress.update(
-            self.overall_task,
-            completed=overall_progress,
-            description=f"[bold blue]Downloading ({self.completed_count}/{self.total_chapters}) chapters[/bold blue] {status_str}",
-        )
+        with progress_lock:
+            downloaded_segments[0] += 1
+            progress_pct = int((downloaded_segments[0] / total_segments) * 100)
+            if progress_callback is None:
+                logging.info(
+                    f"Downloaded segment {downloaded_segments[0]}/{total_segments} for {item['name']} - {progress_pct}% complete"
+                )
+            else:
+                progress_callback(
+                    chapter_index,
+                    progress_pct,
+                    downloaded_segments[0] == total_segments,
+                )
 
-    def _get_truncated_name(self, chapter_index: int) -> str:
-        """Get truncated chapter name for display."""
-        full_name = self.chapters[chapter_index]["name"]
-        clean_name = SLASH_REPLACE_STRING.join(full_name.split("/"))
-        # Truncate very long names to fit better in terminal
-        max_length = 40
-        if len(clean_name) > max_length:
-            clean_name = clean_name[: max_length - 3] + "..."
-        return clean_name
+        return data
 
+    # Download segments concurrently
+    with ThreadPoolExecutor(max_workers=max_concurrent_segments) as executor:
+        futures = [
+            executor.submit(download_segment, i, segment_url)
+            for i, segment_url in enumerate(segments)
+        ]
 
-class FfmpegProgressTracker(threading.Thread):
-    """Track ffmpeg progress using a temporary file.
-    From https://github.com/kkroening/ffmpeg-python/issues/43#issuecomment-2461007778
-    """
-
-    def __init__(self, chapter_index: int, shared_progress: SharedProgressTracker):
-        threading.Thread.__init__(self, name=f"ProgressTracker-{chapter_index}")
-        self.daemon = True
-        self.stop_event = threading.Event()
-        self.progress_file = tempfile.NamedTemporaryFile(
-            mode="w+", delete=False, suffix=".txt"
-        )
-        self.progress_file_path = self.progress_file.name
-        self.progress_file.close()  # Close so ffmpeg can write to it
-
-        self.chapter_index = chapter_index
-        self.duration_seconds = None
-        self.shared_progress = shared_progress
-
-    def run(self):
-        """Monitor progress file and update individual chapter progress bar."""
-        started = False
-        while not self.stop_event.is_set() and not _shutdown_requested:
-            try:
-                current_seconds = self._get_latest_progress()
-                if current_seconds is not None and self.duration_seconds:
-                    progress_fraction = min(
-                        current_seconds / self.duration_seconds, 1.0
-                    )
-
-                    # Mark as started on first progress update
-                    if not started:
-                        self.shared_progress.start_chapter(self.chapter_index)
-                        started = True
-
-                    self.shared_progress.update_individual_progress(
-                        self.chapter_index, progress_fraction
-                    )
-
-                    if current_seconds >= self.duration_seconds:
-                        # Ensure final 100% update
-                        self.shared_progress.update_individual_progress(
-                            self.chapter_index, 1.0
-                        )
-                        break
-
-            except Exception:
-                pass  # Ignore errors in progress tracking
-
-            time.sleep(0.5)  # Update every 500ms
-
-    def _get_latest_progress(self):
-        """Parse the latest progress from ffmpeg progress file."""
+        # Wait for all downloads to complete
         try:
-            with open(self.progress_file_path, "r") as f:
-                lines = f.readlines()
+            for future in as_completed(futures):
+                if _shutdown_requested:
+                    # Cancel all pending futures
+                    for f in futures:
+                        f.cancel()
+                    if mp3_filename.exists():
+                        mp3_filename.unlink()
+                    return False
+                future.result()  # Raise any exceptions
+        except KeyboardInterrupt:
+            # Cancel all pending futures on keyboard interrupt
+            for f in futures:
+                f.cancel()
+            if mp3_filename.exists():
+                mp3_filename.unlink()
+            return False
 
-            # Look for out_time_ms in the latest progress block
-            for line in reversed(lines):
-                line = line.strip()
-                if line.startswith("out_time_ms="):
-                    microseconds = int(line.split("=")[1])
-                    return microseconds / 1000000.0  # Convert to seconds
+    # Write segments to file in correct order
+    with mp3_filename.open("wb") as f:
+        for data in segment_data:
+            if data is None:
+                # This shouldn't happen if all downloads succeeded
+                if mp3_filename.exists():
+                    mp3_filename.unlink()
+                return False
+            f.write(data)
 
-        except (FileNotFoundError, ValueError, IndexError):
-            pass
-
-        return None
-
-    def set_duration(self, duration_seconds: int):
-        """Set the total duration for progress calculation."""
-        self.duration_seconds = duration_seconds
-
-    def stop(self):
-        """Stop the progress tracker."""
-        self.stop_event.set()
-
-        try:
-            Path(self.progress_file_path).unlink()
-        except FileNotFoundError:
-            pass
-
-    def __enter__(self):
-        self.start()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
-        return False
+    return True
 
 
-def download_hls_chapter(
+def download_hls_chapter_core(
     item: dict,
     download_headers: dict,
     download_folder: Path,
     chapter_index: int,
-    shared_progress: SharedProgressTracker,
+    book_title: str,
+    progress_callback: callable | None = None,
+    total_chapters: int | None = None,
+    max_concurrent_segments: int = 4,
 ) -> tuple[str, bool]:
-    """Download and convert a single HLS chapter to MP3 using ffmpeg.
+    """Core download logic shared between all download functions.
 
     Args:
         item: Chapter info dict with 'name' and 'url' keys
         download_headers: HTTP headers for authenticated requests
         download_folder: Directory to save the MP3 file
-        chapter_index: Zero-based chapter index for progress display
-        shared_progress: shared progress tracker
+        chapter_index: Zero-based chapter index
+        book_title: Book title for filename generation
+        progress_callback: Callable for progress updates (optional)
+        total_chapters: Total number of chapters (required for verbose logging)
 
     Returns:
         tuple[str, bool]: (chapter_name, success)
@@ -267,7 +275,7 @@ def download_hls_chapter(
     if _shutdown_requested:
         return item["name"], False
 
-    clean_name = SLASH_REPLACE_STRING.join(item["name"].split("/"))
+    clean_name = _create_standardized_filename(chapter_index, book_title)
     mp3_filename = download_folder.joinpath(f"{clean_name}.mp3")
 
     # Clean up any existing file
@@ -275,147 +283,404 @@ def download_hls_chapter(
         mp3_filename.unlink()
 
     try:
-        # Build ffmpeg command with authentication headers
-        # Use raw \r\n (will be interpreted by ffmpeg)
-        header_string = (
-            f"X-Audiobook-Id: {download_headers['X-Audiobook-Id']}\r\n"
-            f"X-Playback-Token: {download_headers['X-Playback-Token']}\r\n"
-            f"Referer: {download_headers.get('Referer', 'https://tokybook.com/')}"
-        )
+        if progress_callback is None:
+            # Verbose logging mode
+            logging.info(
+                f"Starting download: {item['name']} (Chapter {chapter_index + 1}/{total_chapters})"
+            )
+            logging.debug(f"Fetching HLS playlist: {item['url']}")
 
-        raw_url = item["url"]
+        segments = _parse_hls_playlist(item["url"], download_headers)
 
-        # Use progress tracker for real-time feedback
-        with FfmpegProgressTracker(chapter_index, shared_progress) as progress:
-            # Build ffmpeg command with progress reporting
-            cmd = [
-                "ffmpeg",
-                "-y",  # Overwrite output files
-                "-headers",
-                header_string,
-                "-i",
-                raw_url,
-                "-c:a",
-                "mp3",  # Convert audio to MP3
-                "-progress",
-                progress.progress_file_path,  # Write progress to file
-                "-loglevel",
-                "info",  # Show duration info
-                str(mp3_filename),
-            ]
-
-            # Start ffmpeg process
-            process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        if progress_callback is None:
+            logging.info(
+                f"Downloading {item['name']}: Found {len(segments)} audio segments"
             )
 
-            # Monitor stderr for duration info and shutdown signals
-            duration_set = False
-            while process.poll() is None:
-                # Check for shutdown signal
-                if _shutdown_requested:
-                    process.terminate()
-                    try:
-                        process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
+        total_segments = len(segments)
 
-                    if mp3_filename.exists():
-                        mp3_filename.unlink()
-
-                    return item["name"], False
-
-                # Read stderr to get duration info
-                if not duration_set and process.stderr:
-                    try:
-                        stderr_line = process.stderr.readline()
-                        if stderr_line:
-                            # Look for Duration line
-                            duration_match = re.search(
-                                r"Duration: (\d{2}):(\d{2}):(\d{2})", stderr_line
-                            )
-                            if duration_match:
-                                hours, minutes, seconds = duration_match.groups()
-                                duration_seconds = (
-                                    int(hours) * 3600 + int(minutes) * 60 + int(seconds)
-                                )
-                                progress.set_duration(duration_seconds)
-                                duration_set = True
-                    except Exception:
-                        pass
-
-                time.sleep(0.1)  # Small delay to prevent busy waiting
-
-            return_code = process.returncode
-
-        # Check results
-        success = False
-        if return_code == 0 and mp3_filename.exists():
-            file_size = mp3_filename.stat().st_size
-            if file_size > 1000:  # At least 1KB
-                success = True
-            else:
-                logging.error(
-                    f"Downloaded file too small for {item['name']}: {file_size} bytes"
-                )
-                if mp3_filename.exists():
-                    mp3_filename.unlink()
+        if max_concurrent_segments == 0:
+            # Sequential download (original behavior)
+            success = download_segments_sequential(
+                segments,
+                mp3_filename,
+                download_headers,
+                item,
+                chapter_index,
+                total_segments,
+                progress_callback,
+            )
+            if not success:
+                return item["name"], False
         else:
-            if not _shutdown_requested:
-                logging.error(
-                    f"ffmpeg failed for {item['name']} (return code: {return_code})"
-                )
+            # Concurrent download
+            success = download_segments_concurrent(
+                segments,
+                mp3_filename,
+                download_headers,
+                item,
+                chapter_index,
+                total_segments,
+                progress_callback,
+                max_concurrent_segments,
+            )
+            if not success:
+                return item["name"], False
 
-            if mp3_filename.exists():
-                mp3_filename.unlink()
+        # Check result
+        file_size = mp3_filename.stat().st_size
+        if not _shutdown_requested and progress_callback is None:
+            logging.success(
+                f"Successfully downloaded: {item['name']} ({file_size:,} bytes)"
+            )
+        return item["name"], True
 
-        # Update progress with final status
-        shared_progress.complete_chapter(chapter_index, success)
-        return item["name"], success
-
-    except Exception as e:
-        # Don't log errors if shutdown was requested (Ctrl+C)
-        if not _shutdown_requested:
-            logging.error(f"Failed to process {item['name']}: {e}")
+    except requests.HTTPError as e:
+        logger = logging.getLogger(__name__)
+        logger.error(
+            f"HTTP {e.response.status_code} downloading chapter '{item['name']}'"
+        )
+        logger.error(f"Failed URL: {item['url']}")
+        logger.error(
+            f"Response headers: {dict(e.response.headers) if e.response else 'None'}"
+        )
+        logger.error(
+            f"Response body: {e.response.text[:500] if e.response and e.response.text else 'None'}"
+        )
         if mp3_filename.exists():
             mp3_filename.unlink()
+        return item["name"], False
+    except requests.RequestException as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Network error downloading chapter '{item['name']}'")
+        logger.error(f"Failed URL: {item['url']}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error details: {str(e)}")
+        if mp3_filename.exists():
+            mp3_filename.unlink()
+        return item["name"], False
+    except Exception as e:
+        import traceback
 
-        # Mark as failed
-        shared_progress.complete_chapter(chapter_index, False)
+        logger = logging.getLogger(__name__)
+        logger.error(f"Unexpected error downloading chapter '{item['name']}'")
+        logger.error(f"Chapter URL: {item['url']}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error message: {str(e)}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
+        if mp3_filename.exists():
+            mp3_filename.unlink()
         return item["name"], False
 
 
-def download_all_chapters(
-    chapters: list[dict], headers: dict, download_folder: Path
+def download_hls_chapter_simple(
+    item: dict,
+    download_headers: dict,
+    download_folder: Path,
+    chapter_index: int,
+    book_title: str,
+    total_chapters: int,
+) -> tuple[str, bool]:
+    """Download and concatenate a single HLS chapter with simple logging."""
+    return download_hls_chapter_core(
+        item,
+        download_headers,
+        download_folder,
+        chapter_index,
+        book_title,
+        total_chapters=total_chapters,
+    )
+
+
+def download_hls_chapter_with_progress(
+    item: dict,
+    download_headers: dict,
+    download_folder: Path,
+    chapter_index: int,
+    book_title: str,
+    progress_updater: callable,
+    max_concurrent_segments: int = 4,
+) -> tuple[str, bool]:
+    """Download and concatenate a single HLS chapter with progress updates."""
+    return download_hls_chapter_core(
+        item,
+        download_headers,
+        download_folder,
+        chapter_index,
+        book_title,
+        progress_updater,
+        max_concurrent_segments,
+    )
+
+
+def _format_chapter_name(name: str) -> str:
+    """Format chapter name for display. Handle already formatted names."""
+    name = name.strip()
+
+    # If already starts with "Chapter" (properly formatted), return as-is
+    if name.lower().startswith("chapter"):
+        return name
+
+    # Try to extract number from the beginning and format properly
+    # Match patterns like "01. Title", "1. Title", "01 Title", "01   Title", etc.
+    match = re.match(r"^\s*(\d+)\.?\s*(.*)$", name)
+    if match:
+        num = match.group(1).zfill(2)  # Pad with zero to make 2 digits
+        title = match.group(2).strip()
+        # Title case the title part
+        title = title.title() if title else ""
+        return f"Chapter {num}{f' - {title}' if title else ''}"
+    else:
+        # If no number found, return title case
+        return name.title() if name else name
+
+
+def _download_chapters_verbose(
+    chapters: list[dict],
+    headers: dict,
+    download_folder: Path,
+    book_title: str,
 ) -> None:
-    """Download all chapters using Pebble ThreadPool with progress tracking.
+    """Download chapters with verbose logging."""
+    global _shutdown_requested
+
+    # Suppress library loggers for clean output
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+
+    total_chapters = len(chapters)
+
+    def _download_wrapper(chapter_data):
+        index, chapter = chapter_data
+        return download_hls_chapter_simple(
+            chapter, headers, download_folder, index, book_title, total_chapters
+        )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        try:
+            futures = [
+                pool.submit(_download_wrapper, (index, chapter))
+                for index, chapter in enumerate(chapters)
+            ]
+            for future in futures:
+                future.result()
+
+            # Check if download was interrupted (double check before completion)
+            if _shutdown_requested:
+                logging.warning(
+                    "Download cancelled by user - partial download completed"
+                )
+                return
+
+            successful_downloads = sum(1 for future in futures if future.result()[1])
+            failed_downloads = total_chapters - successful_downloads
+
+            # Final check for interruption right before logging success
+            if _shutdown_requested:
+                logging.warning("Download was interrupted during final steps")
+                return
+
+            if failed_downloads > 0:
+                logging.info(
+                    f"Download completed: {successful_downloads}/{total_chapters} chapters downloaded successfully, {failed_downloads} failed"
+                )
+            else:
+                logging.success(
+                    f"Download completed successfully: All {total_chapters} chapters downloaded"
+                )
+
+        except KeyboardInterrupt:
+            _shutdown_requested = True
+            logging.warning("Download cancelled by user - partial download completed")
+            return  # Exit early, don't show completion message
+
+
+def download_all_chapters(
+    chapters: list[dict],
+    headers: dict,
+    download_folder: Path,
+    book_title: str = "Unknown Book",
+    author: str = "Unknown Author",
+    verbose: bool = False,
+    show_chapter_bars: bool = True,
+    show_all_chapter_bars: bool = False,
+    hide_completed_bars: bool = False,
+    max_concurrent_segments: int = 4,
+) -> None:
+    """Download all chapters with modern progress tracking.
 
     Args:
         chapters: List of chapter dicts with 'name' and 'url' keys
         headers: HTTP headers for authenticated requests
         download_folder: Directory to save MP3 files
-
+        book_title: Book title for display
+        author: Author name for display
+        verbose: Enable verbose logging (default False)
+        show_chapter_bars: Show individual chapter progress bars alongside overall progress (default True)
+        show_all_chapter_bars: Show all chapter bars at once from the start, including pending chapters (default False)
+        hide_completed_bars: Hide completed chapter bars when using dynamic display (default True)
+        max_concurrent_segments: Maximum concurrent segment downloads per chapter (0 = sequential)
     """
-    # Overall progress bar showing percentage (0-100) summed across all streams
+    # Setup logging levels before starting
+    utils.setup_colored_logging(verbose)
+
+    if verbose:
+        _download_chapters_verbose(chapters, headers, download_folder, book_title)
+    else:
+        # Use the new progress function
+        _download_chapters_with_progress(
+            chapters,
+            headers,
+            download_folder,
+            book_title,
+            author,
+            download_hls_chapter_with_progress,  # Pass the download function
+            max_concurrent_segments,
+        )
+
+
+def _download_chapters_with_progress(
+    chapters: list[dict],
+    headers: dict,
+    download_folder: Path,
+    book_title: str,
+    author: str,
+    download_hls_chapter_func: callable,
+    max_concurrent_segments: int = 4,
+) -> None:
+    """Download chapters with progress bars using custom columns."""
     global _shutdown_requested
-    with Progress(refresh_per_second=1) as progress:
-        with ThreadPool(max_workers=2) as pool:
-            try:
-                shared_progress = SharedProgressTracker(progress, chapters)
 
-                def _download_chapter_wrapper(chapter_data):
-                    index, chapter = chapter_data
-                    return download_hls_chapter(
-                        chapter, headers, download_folder, index, shared_progress
-                    )
+    console = Console()
+    total_chapters = len(chapters)
+    chapter_progresses = [
+        0
+    ] * total_chapters  # Track progress (0-100%) for each chapter
+    downloaded_count = 0  # Count of fully completed chapters
+    active_tasks = {}  # chapter_index -> task_id for dynamic bars
+    start_times = [None] * total_chapters  # Track when each chapter starts
 
-                futures = pool.map(_download_chapter_wrapper, enumerate(chapters))
-                for chapter_name, success in futures.result():
-                    if success:
-                        logging.info(f"Downloaded: {chapter_name}")
-                    elif not _shutdown_requested:
-                        logging.error(f"Failed: {chapter_name}")
-            except KeyboardInterrupt:
-                _shutdown_requested = True
-                pool.stop()
-                raise
+    # Create single progress display for all items
+    progress = utils.create_progress_display()
+
+    # Add overall progress bar
+    overall_task_id = progress.add_task(
+        "", total=100, emoji="⬇️", name="Overall", start_time=time.time()
+    )
+
+    # Add all chapters initially with no time shown
+    for i, chapter in enumerate(chapters):
+        chapter_num = str(i + 1).zfill(2)
+        task_id = progress.add_task(
+            "",
+            total=100,
+            emoji="🔄️",
+            name=f"Chapter {chapter_num}",
+            start_time=None,  # No time initially
+        )
+        active_tasks[i] = task_id
+
+    def update_progress(chapter_index, progress_pct, completed=False):
+        nonlocal downloaded_count
+
+        # Update individual chapter progress
+        chapter_progresses[chapter_index] = progress_pct
+
+        # Mark chapter as started when progress > 0
+        if progress_pct > 0 and start_times[chapter_index] is None:
+            start_times[chapter_index] = time.time()
+            progress.update(
+                active_tasks[chapter_index], start_time=start_times[chapter_index]
+            )
+
+        # Update individual chapter bar
+        progress.update(active_tasks[chapter_index], completed=progress_pct)
+
+        # Update downloaded count for completed chapters
+        if completed and progress_pct >= 100:
+            downloaded_count += 1
+
+        # Calculate overall progress
+        overall_pct = sum(chapter_progresses) / total_chapters
+        progress.update(overall_task_id, completed=overall_pct)
+
+        # Determine emoji based on state
+        if completed or progress_pct >= 100:
+            emoji = "✅"  # Completed
+        elif progress_pct > 0:
+            emoji = "⬇️"  # Downloading
+        else:
+            emoji = "🔄️"  # Pending
+
+        # Update chapter emoji
+        progress.update(active_tasks[chapter_index], emoji=emoji)
+
+    def create_display():
+        header_lines = [
+            f"📖 Book: {book_title}",
+            f"👨 Author: {author}",
+            f"📂 Location: {download_folder}",
+            f"📃 Chapters: {total_chapters}",
+            f"✅ Downloaded: {downloaded_count}",
+            "",
+        ]
+
+        download_complete = downloaded_count >= total_chapters
+        display_elements = [Text("\n".join(header_lines), style="bold"), progress]
+
+        if download_complete:
+            display_elements.append(Text("✨ Download Complete!", style="bold green"))
+
+        return Group(*display_elements)
+
+    # Start display
+    with Live(create_display(), console=console, refresh_per_second=4) as live:
+        # Download wrapper with progress updates
+        def download_with_progress(chapter_data):
+            index, chapter = chapter_data
+            result = download_hls_chapter_func(
+                chapter,
+                headers,
+                download_folder,
+                index,
+                book_title,
+                lambda ch_idx, pct, comp: update_progress(ch_idx, pct, comp),
+                max_concurrent_segments,
+            )
+            chapter_name, success = result
+
+            # Handle failed downloads
+            if not success:
+                progress.update(active_tasks[index], emoji="❌")
+
+            live.update(create_display())
+            return result
+
+        # Concurrency - up to 2 chapters at a time
+        from concurrent.futures import ThreadPoolExecutor
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [
+                    pool.submit(download_with_progress, (index, chapter))
+                    for index, chapter in enumerate(chapters)
+                ]
+                for future in futures:
+                    future.result()
+        except KeyboardInterrupt:
+            _shutdown_requested = True
+            logging.warning("Download cancelled by user")
+
+            # Smart emoji assignment based on progress state
+            for chapter_index, task_id in active_tasks.items():
+                progress_pct = chapter_progresses[chapter_index]
+                if progress_pct >= 100:
+                    progress.update(task_id, emoji="✅")  # Already complete
+                elif progress_pct > 0:
+                    progress.update(task_id, emoji="⚠️")  # Was downloading
+                else:
+                    progress.update(task_id, emoji="❗")  # Never started
+
+            return  # Exit early

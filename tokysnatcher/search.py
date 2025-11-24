@@ -1,70 +1,155 @@
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any
 import questionary
-from urllib.parse import quote
+import requests
 
-from gazpacho import Soup, get
-from halo import Halo
-
-
-def fetch_results(query: str, page: int = 1):
-    SEARCH_URL = f"https://tokybook.com/search/more?q={quote(query)}&page={page-1}"
-    html = get(SEARCH_URL)
-    soup = Soup(html)
-    return soup
+from rich.console import Console
 
 
-def search_book(query: str = None, page: int = 1, previous_pages: dict = None):
-    if previous_pages is None:
-        previous_pages = {}
+@dataclass
+class SearchResult:
+    """Represents a single search result."""
 
-    if query is None:
-        query = input("Enter search query: ")
+    title: str
+    book_id: str
+    full_url: str
 
-    spinner = Halo(text="Searching...", spinner="dots")
-    spinner.start()
 
-    if page in previous_pages:
-        soup = previous_pages[page]
-    else:
-        soup = fetch_results(query, page)
-        previous_pages[page] = soup
+class SearchResultFormatter:
+    """Handles formatting and display of search results."""
 
-    results = soup.find("div", {"class": "book-card"})
+    @staticmethod
+    def format_result(book: Dict[str, Any]) -> SearchResult:
+        """Format a raw book dict into a SearchResult object."""
+        title = book.get("title", "Unknown Title")
+        book_id = book.get("bookId", book.get("dynamicSlugId", book.get("id", "")))
+        full_url = f"https://tokybook.com/post/{book_id}" if book_id else ""
+        return SearchResult(title, book_id, full_url)
 
-    if not isinstance(results, list):
-        print("No results found. Exiting...")
-        spinner.stop()
-        return None
+    @staticmethod
+    def get_display_choices(
+        results: List[SearchResult], page: int, has_more: bool, has_previous: bool
+    ) -> tuple:
+        """Generate display choices for interactive selection."""
+        titles = []
+        urls = []
 
-    titles = [f"📖 {x.text}" for x in results]
-    urls = [x.find("a").attrs.get("href") for x in results]
+        for result in results:
+            titles.append(f"📖 {result.title}")
+            urls.append(result.book_id)
 
-    next_page = len(results) == 10  # If we got 10 results, likely more pages exist
-    if next_page:
-        titles.append("➡️ Next page")
-        urls.append("next")
+        # Add pagination options
+        if has_more:
+            titles.append("➡️ Next page")
+            urls.append("next")
 
-    if page > 1:
-        titles.append("⬅️ Previous page")
-        urls.append("previous")
+        if has_previous:
+            titles.append("⬅️ Previous page")
+            urls.append("previous")
 
-    spinner.stop()
-    titles.append("🔍 Search again")
-    urls.append("search_again")
-    titles.append("❌ Exit")
-    urls.append("exit")
+        # Add interactive options
+        titles.extend(["🔍 Search again", "❌ Exit"])
+        urls.extend(["search_again", "exit"])
 
-    choice = questionary.select("Search results:", choices=titles).ask()
+        return titles, urls
 
-    idx = titles.index(choice)
 
-    if urls[idx] == "next":
-        return search_book(query, page + 1, previous_pages)
-    elif urls[idx] == "previous":
-        return search_book(query, max(0, page - 1), previous_pages)
-    elif urls[idx] == "search_again":
-        return search_book()
-    elif urls[idx] == "exit":
-        print("Exiting...")
-        return None
+def fetch_results(query: str, page: int = 1) -> Dict[str, Any]:
+    """Fetch search results from the JSON API."""
+    API_URL = "https://tokybook.com/api/v1/search"
 
-    return f"https://tokybook.com{urls[idx]}"
+    offset = (page - 1) * 12
+    limit = 12
+
+    payload = {"query": query, "offset": offset, "limit": limit}
+
+    try:
+        response = requests.post(API_URL, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Error fetching search results: {e}")
+        return {"content": [], "totalHits": 0}
+
+
+def search_book(query: Optional[str] = None, interactive: bool = True) -> Optional[str]:
+    """Search for books using the API with iterative pagination instead of recursion."""
+    current_page = 1
+    api_cache: Dict[int, Dict[str, Any]] = {}
+
+    while True:
+        if query is None:
+            query = input("Enter search query: ").strip()
+
+        console = Console()
+
+        # Show spinner while searching
+        with console.status("[bold green]Searching...[/]", spinner="dots"):
+            # Get cached or fetch results
+            if current_page in api_cache:
+                api_response = api_cache[current_page]
+            else:
+                api_response = fetch_results(query, current_page)
+                api_cache[current_page] = api_response
+
+        results = api_response.get("content", [])
+
+        if not results:
+            console.print("No results found. Exiting...")
+            return None
+
+        # Format results
+        search_results = [
+            SearchResultFormatter.format_result(book)
+            for book in results
+            if book.get("bookId") or book.get("dynamicSlugId")
+        ]
+        display_results = search_results
+
+        # Check pagination
+        current_offset = (current_page - 1) * 12
+        total_results = api_response.get("totalHits", 0)
+        has_more = current_offset + len(display_results) < total_results
+        has_previous = current_page > 1
+
+        # Display results
+        console.print("Search results:")
+        for i, result in enumerate(display_results, 1):
+            console.print(f"{i}. 📖 {result.title}")
+
+        if not interactive:
+            return display_results[0].full_url if display_results else None
+
+        # Get user choice
+        formatter = SearchResultFormatter()
+        choices, actions = formatter.get_display_choices(
+            display_results, current_page, has_more, has_previous
+        )
+
+        choice = questionary.select("Choose action:", choices=choices).ask()
+
+        if choice is None:
+            print("No selection made. Exiting...")
+            return None
+
+        idx = choices.index(choice)
+        action = actions[idx]
+
+        if action == "next":
+            current_page += 1
+            continue
+        elif action == "previous":
+            current_page = max(1, current_page - 1)
+            continue
+        elif action == "search_again":
+            query = None
+            current_page = 1
+            api_cache.clear()
+            continue
+        elif action == "exit":
+            print("Exiting...")
+            return None
+        else:
+            # Selected a book
+            selected_result = next(r for r in display_results if r.book_id == action)
+            return selected_result.full_url
