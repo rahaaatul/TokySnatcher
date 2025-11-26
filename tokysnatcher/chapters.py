@@ -36,7 +36,7 @@ def fetch_post_details(slug: str) -> dict | None:
     """Fetch post details from API."""
     try:
         response = requests.post(
-            "https://tokybook.com/api/v1/search_details",
+            "https://tokybook.com/api/v1/search/post-details",
             json={"dynamicSlugId": slug},
             timeout=30,
         )
