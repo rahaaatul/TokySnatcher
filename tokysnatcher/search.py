@@ -22,7 +22,7 @@ class SearchResultFormatter:
     def format_result(book: Dict[str, Any]) -> SearchResult:
         """Format a raw book dict into a SearchResult object."""
         title = book.get("title", "Unknown Title")
-        book_id = book.get("bookId", book.get("dynamicSlugId", book.get("id", "")))
+        book_id = book.get("bookId") or book.get("dynamicSlugId") or book.get("id") or ""
         full_url = f"https://tokybook.com/post/{book_id}" if book_id else ""
         return SearchResult(title, book_id, full_url)
 

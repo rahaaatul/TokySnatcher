@@ -1,26 +1,18 @@
 from dataclasses import dataclass
+from typing import Optional
 import argparse
 import logging
-import platform
 import shutil
 import sys
 from os import name, system
 from pathlib import Path
 
 import questionary
+from rich.console import Console
+from rich.table import Table
 
 from .chapters import get_chapters
 from .search import search_book
-
-# Terminal settings for Unix-like systems
-if platform.system() != "Windows":
-    import termios
-
-    fd: int = sys.stdin.fileno()
-    old_term_settings: list[int] = termios.tcgetattr(fd)
-else:
-    termios = None
-
 from .utils import setup_colored_logging
 
 # Configure logging
@@ -29,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DownloadConfig:
-    directory: Path | None
+    directory: Optional[Path]
     verbose: bool
     show_all_chapter_bars: bool
 
@@ -50,6 +42,63 @@ def clear_terminal() -> None:
     system("cls" if name == "nt" else "clear")  # noqa: S605
 
 
+class RichHelpFormatter(argparse.HelpFormatter):
+    """Clean Rich formatter with colors but no decorations."""
+
+    def __init__(self, prog, indent_increment=2, max_help_position=24, width=None):
+        """Initialize with proper argparse.HelpFormatter attributes."""
+        super().__init__(prog, indent_increment, max_help_position, width)
+
+    def format_help(self) -> str:
+        """Override format_help to use clean Rich grid layout."""
+        import io
+
+        # Use StringIO to capture Rich output as string
+        output_buffer = io.StringIO()
+        console = Console(file=output_buffer, width=self._width)
+
+        # Rich title with centered styling
+        output_parts = []
+        output_parts.append("")
+        rule_text = "─" * (self._width - 4)  # Simple unicode rule chars
+        output_parts.append(f"────{rule_text}─")
+        output_parts.append("[bold magenta]TokySnatcher[/bold magenta] [dim]-[/dim] [bold green]Download Audiobooks from TokyBook[/bold green]")
+        output_parts.append(f"────{rule_text}─")
+        output_parts.append("")
+
+        # Commands section
+        commands_table = Table.grid()
+        commands_table.add_column(justify="left")
+        commands_table.add_column(justify="left")
+
+
+
+        # Options section
+        options_table = Table.grid()
+        options_table.add_column(justify="left", min_width=35)
+        options_table.add_column(justify="left")
+
+        options_table.add_row("  [green]-d, --directory[/green] [red]DIRECTORY[/red]",
+                           "[dim cyan]Custom download directory[/dim cyan]")
+        options_table.add_row("  [green]-s, --search[/green] [red]SEARCH[/red]",
+                           "[dim cyan]Search query to bypass interactive menu[/dim cyan]")
+        options_table.add_row("  [green]-u, --url[/green] [red]URL[/red]",
+                           "[dim cyan]Direct URL to download[/dim cyan]")
+        options_table.add_row("  [green]-v, --verbose[/green]",
+                           "[dim cyan]Show detailed logs during download[/dim cyan]")
+        options_table.add_row("  [green]-a, --show-all-chapter-bars[/green]",
+                           "[dim cyan]Show all chapter progress bars permanently[/dim cyan]")
+        options_table.add_row("  [green]-h, --help[/green]",
+                           "[dim cyan]Show this help message and exit[/dim cyan]")
+
+        console.print("[bold yellow]OPTIONS[/bold yellow]:")
+        console.print(options_table)
+
+        # Get the captured output
+        captured_output = output_buffer.getvalue()
+        return captured_output
+
+
 def validate_url(url: str) -> str:
     """Validate and return a validated url."""
     if not url.startswith("https://tokybook.com/"):
@@ -57,11 +106,26 @@ def validate_url(url: str) -> str:
     return url
 
 
+class CustomHelpAction(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        # Don't call parser.exit() here, let the normal help handling take place
+        # But we'll catch the SystemExit if needed
+        pass
+
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="TokySnatcher - Download Audiobooks from TokyBook"
+        description="TokySnatcher - Download Audiobooks from TokyBook",
+        prog="tokysnatcher",
+        formatter_class=RichHelpFormatter,
+        add_help=True,  # Enable automatic help, it will use our formatter
     )
+
+
+
+
+
+
     parser.add_argument(
         "-d", "--directory", type=str, default=None, help="Custom download directory"
     )
@@ -92,6 +156,7 @@ def parse_arguments() -> argparse.Namespace:
         default=False,
         help="Show all chapter progress bars permanently",
     )
+
     return parser.parse_args()
 
 
@@ -158,33 +223,32 @@ def get_validated_input() -> str:
         return get_validated_input()
 
 
-def get_input() -> str:
-    """Get URL input from user for manual download. Deprecated, use get_validated_input."""
-    while True:
-        url = input("Enter URL: ")
-        try:
-            return validate_url(url)
-        except ValueError as e:
-            print(f"Error: {e}")
-            continue
+
 
 
 def main() -> None:
-    """Get argument from CLI and execute the selected action."""
+    """Main entry point for TokySnatcher."""
     check_ffmpeg()
+
     args = parse_arguments()
-    setup_colored_logging(args.verbose)
+
+    # Handle download/search commands (default behavior)
+    setup_colored_logging(args.verbose if hasattr(args, "verbose") else False)
 
     config = DownloadConfig(
-        directory=Path(args.directory) if args.directory else None,
-        verbose=args.verbose,
-        show_all_chapter_bars=args.show_all_chapter_bars,
+        directory=Path(args.directory)
+        if hasattr(args, "directory") and args.directory
+        else None,
+        verbose=args.verbose if hasattr(args, "verbose") else False,
+        show_all_chapter_bars=args.show_all_chapter_bars
+        if hasattr(args, "show_all_chapter_bars")
+        else False,
     )
 
     try:
-        if args.url:
+        if hasattr(args, "url") and args.url:
             handle_url_action(args.url, config)
-        elif args.search:
+        elif hasattr(args, "search") and args.search:
             handle_search_action(args.search, config)
         else:
             handle_interactive_action(config)
@@ -194,9 +258,6 @@ def main() -> None:
     except Exception:
         logger.exception("An unexpected error occurred")
         sys.exit(1)
-    finally:
-        if termios:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_term_settings)
 
 
 if __name__ == "__main__":
