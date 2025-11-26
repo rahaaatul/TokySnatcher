@@ -1,131 +1,66 @@
-# This workflow will upload a Python Package using Twine when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+# Automated semantic release using python-semantic-release
+# Analyzes conventional commits to determine version bumps, generates changelog, and creates releases
 
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Release and Publish
+name: Release & Publish
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'pyproject.toml'
-  workflow_dispatch: # Allow manual trigger
+    branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: write
-  pull-requests: read
+  pull-requests: write
+  id-token: write  # For PyPI publishing
 
 jobs:
-  check-version-and-release:
+  release:
+    if: |
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, 'chore: release')
     runs-on: ubuntu-latest
-    outputs:
-      new_version: ${{ steps.get_version.outputs.new_version }}
-      should_release: ${{ steps.check_version.outputs.should_release }}
+
     steps:
     - uses: actions/checkout@v4
       with:
+        token: ${{ secrets.GITHUB_TOKEN }}
         fetch-depth: 0
 
-    - name: Get current version
-      id: get_version
-      run: |
-        pip install toml
-        NEW_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
-        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-        echo "Version: $NEW_VERSION"
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v4
 
-    - name: Get previous version from git tags
-      id: get_prev_version
-      run: |
-        if git describe --tags --abbrev=0 2>/dev/null; then
-          PREV_VERSION=$(git describe --tags --abbrev=0)
-          echo "prev_version=$PREV_VERSION" >> $GITHUB_OUTPUT
-          echo "Previous version: $PREV_VERSION"
-        else
-          echo "No previous tags found, this is first release"
-          echo "prev_version=" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Check if version increased
-      id: check_version
-      run: |
-        NEW="${{ steps.get_version.outputs.new_version }}"
-        PREV="${{ steps.get_prev_version.outputs.prev_version }}"
-
-        echo "🔍 Debug: NEW_VERSION=$NEW, PREV_VERSION='$PREV'"
-
-        if [ -z "$PREV" ]; then
-          echo "🆕 First release, proceeding..."
-          echo "should_release=true" >> $GITHUB_OUTPUT
-        else
-          echo "📊 Comparing versions: $PREV -> $NEW"
-
-          # Strip 'v' prefix from version if present
-          PREV_CLEAN=$(echo $PREV | sed 's/^v//')
-          echo "🧹 Cleaned PREV version: '$PREV' -> '$PREV_CLEAN'"
-
-          # Simple semver comparison
-          NEW_MAJOR=$(echo $NEW | cut -d. -f1)
-          NEW_MINOR=$(echo $NEW | cut -d. -f2)
-          NEW_PATCH=$(echo $NEW | cut -d. -f3)
-
-          PREV_MAJOR=$(echo $PREV_CLEAN | cut -d. -f1)
-          PREV_MINOR=$(echo $PREV_CLEAN | cut -d. -f2)
-          PREV_PATCH=$(echo $PREV_CLEAN | cut -d. -f3)
-
-          echo "🔢 Parsed: PREV=$PREV_MAJOR.$PREV_MINOR.$PREV_PATCH, NEW=$NEW_MAJOR.$NEW_MINOR.$NEW_PATCH"
-
-          if [ "$NEW_MAJOR" -gt "$PREV_MAJOR" ] || [ "$NEW_MAJOR" -eq "$PREV_MAJOR" -a "$NEW_MINOR" -gt "$PREV_MINOR" ] || [ "$NEW_MAJOR" -eq "$PREV_MAJOR" -a "$NEW_MINOR" -eq "$PREV_MINOR" -a "$NEW_PATCH" -gt "$PREV_PATCH" ]; then
-            echo "✅ Version increased: $PREV -> $NEW"
-            echo "should_release=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Version did not increase: $PREV -> $NEW (conditions not met)"
-            echo "should_release=false" >> $GITHUB_OUTPUT
-            exit 0  # Don't fail, just don't release
-          fi
-        fi
-
-    - name: Generate release notes
-      id: generate_notes
-      if: steps.check_version.outputs.should_release == 'true'
-      run: |
-        NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
-        # Extract release notes from CHANGELOG.md
-        awk -v version="[${NEW_VERSION}]" '
-        $0 == version {
-          found=1
-          print "## 🚀 Release " version
-          print ""
-          next
-        }
-        /^## +\[/ && found { exit }
-        found { print }
-        ' CHANGELOG.md > release_notes.txt
-
-        # Add footer
-        echo "" >> release_notes.txt
-        echo "---" >> release_notes.txt
-        echo "" >> release_notes.txt
-        echo "For installation and usage instructions, please refer to the [README](https://github.com/rahaaatul/TokySnatcher/blob/main/README.md) file." >> release_notes.txt
-
-        # Write as multiline output
-        {
-          echo 'release_notes<<EOF'
-          cat release_notes.txt
-          echo EOF
-        } >> $GITHUB_OUTPUT
-
-    - name: Create GitHub release
-      if: steps.check_version.outputs.should_release == 'true'
-      uses: actions/create-release@v1
+    - name: Semantic Release
+      run: uv run semantic-release --github --no-api
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Lint with ruff
+      run: uv run ruff check .
+
+  publish:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Build package
+      run: uv build
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/production
       with:
-        tag_name: v${{ steps.get_version.outputs.new_version }}
-        release_name: Release v${{ steps.get_version.outputs.new_version }}
-        body: ${{ steps.generate_notes.outputs.release_notes }}
+        print-hash: true
