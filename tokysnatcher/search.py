@@ -22,7 +22,9 @@ class SearchResultFormatter:
     def format_result(book: Dict[str, Any]) -> SearchResult:
         """Format a raw book dict into a SearchResult object."""
         title = book.get("title", "Unknown Title")
-        book_id = book.get("bookId") or book.get("dynamicSlugId") or book.get("id") or ""
+        book_id = (
+            book.get("bookId") or book.get("dynamicSlugId") or book.get("id") or ""
+        )
         full_url = f"https://tokybook.com/post/{book_id}" if book_id else ""
         return SearchResult(title, book_id, full_url)
 
@@ -35,16 +37,16 @@ class SearchResultFormatter:
         urls = []
 
         for result in results:
-            titles.append(f"📖 {result.title}")
+            titles.append(f"📓 {result.title}")
             urls.append(result.book_id)
 
         # Add pagination options
         if has_more:
-            titles.append("➡️ Next page")
+            titles.append("⏭️  Next page")
             urls.append("next")
 
         if has_previous:
-            titles.append("⬅️ Previous page")
+            titles.append("⏮️  Previous page")
             urls.append("previous")
 
         # Add interactive options
@@ -112,12 +114,11 @@ def search_book(query: Optional[str] = None, interactive: bool = True) -> Option
         has_more = current_offset + len(display_results) < total_results
         has_previous = current_page > 1
 
-        # Display results
-        console.print("Search results:")
-        for i, result in enumerate(display_results, 1):
-            console.print(f"{i}. 📖 {result.title}")
-
         if not interactive:
+            # Display results
+            console.print("Search results:")
+            for i, result in enumerate(display_results, 1):
+                console.print(f"{i}. 📖 {result.title}")
             return display_results[0].full_url if display_results else None
 
         # Get user choice
