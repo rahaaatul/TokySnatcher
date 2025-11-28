@@ -184,7 +184,6 @@ def handle_interactive_action(config: DownloadConfig) -> None:
     """Handle interactive menu selection."""
 
     while True:
-        console.clear()
         console.print(
             "[bold magenta]Welcome to TokySnatcher Interactive Mode![/bold magenta]\n"
         )
@@ -203,12 +202,15 @@ def handle_interactive_action(config: DownloadConfig) -> None:
         try:
             if selected_action == search_label:
                 handle_search_action("", config)
+                console.clear()
             elif selected_action == url_label:
                 url = get_validated_input()
                 if url is not None:
                     handle_url_action(url, config)
+                    console.clear()
         except Exception as e:
             console.print(f"[red]Error during download: {e}[/red]")
+            console.clear()
 
 
 def get_validated_input() -> Optional[str]:
