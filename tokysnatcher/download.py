@@ -30,10 +30,10 @@ def _parse_hls_playlist(playlist_url: str, headers: dict) -> list[str]:
     logger = logging.getLogger(__name__)
 
     logging.debug(f"Request headers: {headers}")
- 
+
     headers_copy = headers.copy()
     headers_copy["X-Track-Src"] = playlist_url.replace("https://tokybook.com", "")
- 
+
     logging.debug(f"Modified headers for X-Track-Src: {headers_copy}")
 
     try:
@@ -331,8 +331,9 @@ def download_hls_chapter_core(
         # Check result
         file_size = mp3_filename.stat().st_size
         if not _shutdown_requested and progress_callback is None:
-            logging.log(utils.SUCCESS_LEVEL_NUM,
-                f"Successfully downloaded: {item['name']} ({file_size:,} bytes)"
+            logging.log(
+                utils.SUCCESS_LEVEL_NUM,
+                f"Successfully downloaded: {item['name']} ({file_size:,} bytes)",
             )
         return item["name"], True
 
@@ -488,8 +489,9 @@ def _download_chapters_verbose(
                     f"Download completed: {successful_downloads}/{total_chapters} chapters downloaded successfully, {failed_downloads} failed"
                 )
             else:
-                logging.log(utils.SUCCESS_LEVEL_NUM,
-                    f"Download completed successfully: All {total_chapters} chapters downloaded"
+                logging.log(
+                    utils.SUCCESS_LEVEL_NUM,
+                    f"Download completed successfully: All {total_chapters} chapters downloaded",
                 )
 
         except KeyboardInterrupt:
@@ -509,6 +511,7 @@ def download_all_chapters(
     show_all_chapter_bars: bool = False,
     hide_completed_bars: bool = False,
     max_concurrent_segments: int = 4,
+    interactive: bool = True,
 ) -> None:
     """Download all chapters with modern progress tracking.
 
@@ -539,6 +542,7 @@ def download_all_chapters(
             author,
             download_hls_chapter_with_progress,  # Pass the download function
             max_concurrent_segments,
+            interactive,
         )
 
 
@@ -550,6 +554,7 @@ def _download_chapters_with_progress(
     author: str,
     download_hls_chapter_func: Callable[..., Any],
     max_concurrent_segments: int = 4,
+    interactive: bool = True,
 ) -> None:
     """Download chapters with progress bars using custom columns."""
     global _shutdown_requested
@@ -561,7 +566,9 @@ def _download_chapters_with_progress(
     ] * total_chapters  # Track progress (0-100%) for each chapter
     downloaded_count = 0  # Count of fully completed chapters
     active_tasks = {}  # chapter_index -> task_id for dynamic bars
-    start_times: list[Optional[float]] = [None] * total_chapters  # Track when each chapter starts
+    start_times: list[Optional[float]] = [
+        None
+    ] * total_chapters  # Track when each chapter starts
 
     # Create single progress display for all items
     progress = utils.create_progress_display()
@@ -628,11 +635,7 @@ def _download_chapters_with_progress(
             "",
         ]
 
-        download_complete = downloaded_count >= total_chapters
         display_elements = [Text("\n".join(header_lines), style="bold"), progress]
-
-        if download_complete:
-            display_elements.append(Text("✨ Download Complete!", style="bold green"))
 
         return Group(*display_elements)
 
@@ -685,3 +688,7 @@ def _download_chapters_with_progress(
                     progress.update(task_id, emoji="❗")  # Never started
 
             return  # Exit early
+
+    if downloaded_count >= total_chapters and interactive:
+        console.print("\n[green]✨ Download Complete![/green]")
+        input()

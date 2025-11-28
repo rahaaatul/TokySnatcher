@@ -20,9 +20,6 @@ SUCCESS_LEVEL_NUM = 25  # Between INFO (20) and WARNING (30)
 logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
 
 
-
-
-
 # Formatting constants
 LOG_LEVEL_COLORS = {
     "DEBUG": "white",
