@@ -415,6 +415,9 @@ def download_hls_chapter_with_progress(
     )
 
 
+
+
+
 def _format_chapter_name(name: str) -> str:
     """Format chapter name for display. Handle already formatted names."""
     name = name.strip()
@@ -565,6 +568,7 @@ def _download_chapters_with_progress(
         0
     ] * total_chapters  # Track progress (0-100%) for each chapter
     downloaded_count = 0  # Count of fully completed chapters
+    chapter_completed = [False] * total_chapters  # Track which chapters have been counted as complete
     active_tasks = {}  # chapter_index -> task_id for dynamic bars
     start_times: list[Optional[float]] = [
         None
@@ -575,7 +579,7 @@ def _download_chapters_with_progress(
 
     # Add overall progress bar
     overall_task_id = progress.add_task(
-        "", total=100, emoji="⬇️", name="Overall", start_time=time.time()
+        "", total=100, emoji="⬇️", name="Overall", start_time=console.get_time()
     )
 
     # Add all chapters initially with no time shown
@@ -593,22 +597,32 @@ def _download_chapters_with_progress(
     def update_progress(chapter_index, progress_pct, completed=False):
         nonlocal downloaded_count
 
+        # Store old progress to detect completion transition
+        old_progress = chapter_progresses[chapter_index]
+
         # Update individual chapter progress
         chapter_progresses[chapter_index] = progress_pct
 
         # Mark chapter as started when progress > 0
         if progress_pct > 0 and start_times[chapter_index] is None:
-            start_times[chapter_index] = time.time()
+            start_times[chapter_index] = console.get_time()
             progress.update(
                 active_tasks[chapter_index], start_time=start_times[chapter_index]
             )
 
+        # Mark chapter as completed when finished
+        if progress_pct >= 100 and start_times[chapter_index] is not None:
+            # Set completion time to freeze the timer
+            completion_time = console.get_time()
+            progress.update(
+                active_tasks[chapter_index], completion_time=completion_time
+            )
+            # Only increment once per chapter when it first reaches 100%
+            if old_progress < 100:
+                downloaded_count += 1
+
         # Update individual chapter bar
         progress.update(active_tasks[chapter_index], completed=progress_pct)
-
-        # Update downloaded count for completed chapters
-        if completed and progress_pct >= 100:
-            downloaded_count += 1
 
         # Calculate overall progress
         overall_pct = sum(chapter_progresses) / total_chapters
@@ -689,6 +703,7 @@ def _download_chapters_with_progress(
 
             return  # Exit early
 
-    if downloaded_count >= total_chapters and interactive:
+    if downloaded_count >= total_chapters:
         console.print("\n[green]✨ Download Complete![/green]")
-        input()
+        if interactive:
+            input()

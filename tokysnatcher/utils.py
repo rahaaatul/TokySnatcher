@@ -123,10 +123,25 @@ class CustomTimeColumn(TextColumn):
     def render(self, task):
         """Render the time column."""
         start_time = task.fields.get("start_time")
+        completion_time = task.fields.get("completion_time")
+
         if start_time is None:
             return Text("")  # Empty for pending chapters
 
-        elapsed = time.time() - start_time
+        # Use console.get_time() for consistency with Rich's timing
+        console = (
+            task._progress.console
+            if hasattr(task, "_progress") and hasattr(task._progress, "console")
+            else Console()
+        )
+
+        # If completed, use completion time, otherwise use current time
+        if completion_time is not None:
+            elapsed = completion_time - start_time
+        else:
+            current_time = console.get_time()
+            elapsed = current_time - start_time
+
         formatted_time = format_elapsed_time(elapsed)
         return Text(formatted_time, style="cyan")
 
