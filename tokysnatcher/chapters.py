@@ -250,6 +250,7 @@ def get_chapters(
     custom_folder: Path | None = None,
     verbose: bool = False,
     show_all_chapter_bars: bool = False,
+    interactive: bool = True,
 ) -> None:
     """Get Chapters to download.
 
@@ -303,4 +304,5 @@ def get_chapters(
         author=author,
         verbose=verbose,
         show_all_chapter_bars=show_all_chapter_bars,
+        interactive=interactive,
     )

@@ -144,7 +144,9 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def execute_download(url: str, config: DownloadConfig) -> None:
+def execute_download(
+    url: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Execute the download process for a given URL."""
     logger.info("Download starting.")
     get_chapters(
@@ -152,17 +154,22 @@ def execute_download(url: str, config: DownloadConfig) -> None:
         config.directory,
         verbose=config.verbose,
         show_all_chapter_bars=config.show_all_chapter_bars,
+        interactive=interactive,
     )
 
 
-def handle_url_action(url: str, config: DownloadConfig) -> None:
+def handle_url_action(
+    url: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Handle direct URL download."""
     validated_url = validate_url(url)
     logger.info("Downloading from provided URL.")
-    execute_download(validated_url, config)
+    execute_download(validated_url, config, interactive)
 
 
-def handle_search_action(query: str, config: DownloadConfig) -> None:
+def handle_search_action(
+    query: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Handle search action."""
     if not query:
         query = questionary.text("Enter search query:").ask()
@@ -170,14 +177,13 @@ def handle_search_action(query: str, config: DownloadConfig) -> None:
             return
     result = search_book(query, interactive=True)
     if result:
-        execute_download(result, config)
+        execute_download(result, config, interactive)
 
 
 def handle_interactive_action(config: DownloadConfig) -> None:
     """Handle interactive menu selection."""
 
     while True:
-        console.clear()
         console.print(
             "[bold magenta]Welcome to TokySnatcher Interactive Mode![/bold magenta]\n"
         )
@@ -196,12 +202,15 @@ def handle_interactive_action(config: DownloadConfig) -> None:
         try:
             if selected_action == search_label:
                 handle_search_action("", config)
+                console.clear()
             elif selected_action == url_label:
                 url = get_validated_input()
                 if url is not None:
                     handle_url_action(url, config)
+                    console.clear()
         except Exception as e:
             console.print(f"[red]Error during download: {e}[/red]")
+            console.clear()
 
 
 def get_validated_input() -> Optional[str]:
@@ -233,9 +242,9 @@ def main() -> None:
 
     try:
         if args.url:
-            handle_url_action(args.url, config)
+            handle_url_action(args.url, config, False)
         elif args.search:
-            handle_search_action(args.search, config)
+            handle_search_action(args.search, config, False)
         else:
             handle_interactive_action(config)
     except KeyboardInterrupt:

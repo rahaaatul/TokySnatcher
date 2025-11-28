@@ -12,15 +12,13 @@ from rich.progress import (
     BarColumn,
     TextColumn,
 )
+from rich.table import Column
 from rich.text import Text
 
 
 # Custom logging levels
 SUCCESS_LEVEL_NUM = 25  # Between INFO (20) and WARNING (30)
 logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
-
-
-
 
 
 # Formatting constants
@@ -121,41 +119,58 @@ class CustomTimeColumn(TextColumn):
     """Custom time column that shows elapsed time only for started chapters."""
 
     def __init__(self):
-        super().__init__("{task.fields[elapsed_time]}")
+        super().__init__("", table_column=Column())  # Set column width for time display
 
     def render(self, task):
         """Render the time column."""
         start_time = task.fields.get("start_time")
-        if start_time is None:
-            return Text("")  # Empty for pending chapters
+        completion_time = task.fields.get("completion_time")
 
-        elapsed = time.time() - start_time
+        if start_time is None:
+            return Text("", justify="left")  # Empty for pending chapters
+
+        # Use console.get_time() for consistency with Rich's timing
+        console = (
+            task._progress.console
+            if hasattr(task, "_progress") and hasattr(task._progress, "console")
+            else Console()
+        )
+
+        # If completed, use completion time, otherwise use current time
+        if completion_time is not None:
+            elapsed = completion_time - start_time
+        else:
+            current_time = console.get_time()
+            elapsed = current_time - start_time
+
         formatted_time = format_elapsed_time(elapsed)
-        return Text(formatted_time, style="cyan")
+        return Text(formatted_time, style="cyan", justify="left")
 
 
 class CustomEmojiColumn(TextColumn):
     """Custom emoji column for chapter status."""
 
     def __init__(self):
-        super().__init__("{task.fields[emoji]}")
+        super().__init__(
+            "", table_column=Column(width=1)
+        )  # Set column width for consistent spacing
 
     def render(self, task):
         """Render the emoji column."""
         emoji = task.fields.get("emoji", "?")
-        return Text(emoji)
+        return Text(f"{emoji}", justify="left")  # Emoji with fixed column width
 
 
 class CustomNameColumn(TextColumn):
     """Custom name column for chapter names."""
 
     def __init__(self):
-        super().__init__("{task.fields[name]}")
+        super().__init__("", table_column=Column())  # Set column width for name display
 
     def render(self, task):
         """Render the name column."""
         name = task.fields.get("name", "")
-        return Text(name)
+        return Text(name, justify="left")
 
 
 def create_progress_display() -> Progress:
@@ -170,7 +185,7 @@ def create_progress_display() -> Progress:
     )
 
 
-# Global flag for immediate shutdown - TODO: move to a better location
+# Global flag for immediate shutdown
 _shutdown_requested = False
 
 
