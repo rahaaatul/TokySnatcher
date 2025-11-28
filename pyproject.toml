@@ -45,6 +45,8 @@ upload_to_pypi = false
 prerelease_tag = "rc"
 commit_parser = "conventional"
 github_release_name = "Release {version}"
+# Force strict semantic versioning - prevent automatic major version promotion
+major_on_zero = false
 github_release_body = """
 
 ## Changes
