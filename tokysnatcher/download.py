@@ -2,14 +2,12 @@ from typing import Callable, Optional, Any
 import logging
 import re
 import requests
-import time
 from pathlib import Path
 from rich.console import Console, Group
 from rich.live import Live
 from rich.text import Text
 from . import utils
 
-# Global flag for immediate shutdown - use the one from utils
 _shutdown_requested = utils._shutdown_requested
 
 
@@ -268,7 +266,8 @@ def download_hls_chapter_core(
         chapter_index: Zero-based chapter index
         book_title: Book title for filename generation
         progress_callback: Callable for progress updates (optional)
-        total_chapters: Total number of chapters (required for verbose logging)
+        total_chapters: Total number of chapters (optional for verbose logging)
+        max_concurrent_segments: Maximum concurrent segment downloads per chapter
 
     Returns:
         tuple[str, bool]: (chapter_name, success)
@@ -415,9 +414,6 @@ def download_hls_chapter_with_progress(
     )
 
 
-
-
-
 def _format_chapter_name(name: str) -> str:
     """Format chapter name for display. Handle already formatted names."""
     name = name.strip()
@@ -527,16 +523,14 @@ def download_all_chapters(
         verbose: Enable verbose logging (default False)
         show_chapter_bars: Show individual chapter progress bars alongside overall progress (default True)
         show_all_chapter_bars: Show all chapter bars at once from the start, including pending chapters (default False)
-        hide_completed_bars: Hide completed chapter bars when using dynamic display (default True)
+        hide_completed_bars: Hide completed chapter bars when using dynamic display (default False)
         max_concurrent_segments: Maximum concurrent segment downloads per chapter (0 = sequential)
     """
-    # Setup logging levels before starting
     utils.setup_colored_logging(verbose)
 
     if verbose:
         _download_chapters_verbose(chapters, headers, download_folder, book_title)
     else:
-        # Use the new progress function
         _download_chapters_with_progress(
             chapters,
             headers,
@@ -546,6 +540,8 @@ def download_all_chapters(
             download_hls_chapter_with_progress,  # Pass the download function
             max_concurrent_segments,
             interactive,
+            show_all_chapter_bars,
+            hide_completed_bars,
         )
 
 
@@ -558,8 +554,23 @@ def _download_chapters_with_progress(
     download_hls_chapter_func: Callable[..., Any],
     max_concurrent_segments: int = 4,
     interactive: bool = True,
+    show_all_chapter_bars: bool = False,
+    hide_completed_bars: bool = False,
 ) -> None:
-    """Download chapters with progress bars using custom columns."""
+    """Download chapters with progress bars using custom columns.
+
+    Args:
+        chapters: List of chapter dicts with 'name' and 'url' keys
+        headers: HTTP headers for authenticated requests
+        download_folder: Directory to save MP3 files
+        book_title: Book title for display
+        author: Author name for display
+        download_hls_chapter_func: Function to download individual chapters
+        max_concurrent_segments: Maximum concurrent segment downloads per chapter
+        interactive: Whether to prompt for input on completion
+        show_all_chapter_bars: Show all chapter bars at once from the start
+        hide_completed_bars: Hide completed chapter bars after completion
+    """
     global _shutdown_requested
 
     console = Console()
@@ -568,7 +579,6 @@ def _download_chapters_with_progress(
         0
     ] * total_chapters  # Track progress (0-100%) for each chapter
     downloaded_count = 0  # Count of fully completed chapters
-    chapter_completed = [False] * total_chapters  # Track which chapters have been counted as complete
     active_tasks = {}  # chapter_index -> task_id for dynamic bars
     start_times: list[Optional[float]] = [
         None
@@ -582,17 +592,22 @@ def _download_chapters_with_progress(
         "", total=100, emoji="⬇️", name="Overall", start_time=console.get_time()
     )
 
-    # Add all chapters initially with no time shown
-    for i, chapter in enumerate(chapters):
-        chapter_num = str(i + 1).zfill(2)
-        task_id = progress.add_task(
-            "",
-            total=100,
-            emoji="🔄️",
-            name=f"Chapter {chapter_num}",
-            start_time=None,  # No time initially
-        )
-        active_tasks[i] = task_id
+    # Add all chapters initially only if show_all_chapter_bars is True
+    if show_all_chapter_bars:
+        for i, chapter in enumerate(chapters):
+            chapter_num = str(i + 1).zfill(2)
+            task_id = progress.add_task(
+                "",
+                total=None,  # Indeterminate progress bar for unstarted tasks
+                emoji="🔄️",
+                name=f"Chapter {chapter_num}",
+                start_time=None,  # No time initially
+            )
+            active_tasks[i] = task_id
+    else:
+        # When show_all_chapter_bars is False, chapters will be added dynamically
+        # only when they start downloading
+        pass
 
     def update_progress(chapter_index, progress_pct, completed=False):
         nonlocal downloaded_count
@@ -600,44 +615,71 @@ def _download_chapters_with_progress(
         # Store old progress to detect completion transition
         old_progress = chapter_progresses[chapter_index]
 
+        # Create chapter bar dynamically when show_all_chapter_bars is False
+        if (
+            not show_all_chapter_bars
+            and chapter_index not in active_tasks
+            and progress_pct > 0
+        ):
+            chapter_num = str(chapter_index + 1).zfill(2)
+            task_id = progress.add_task(
+                "",
+                total=100,
+                emoji="🔄️",
+                name=f"Chapter {chapter_num}",
+                start_time=None,  # Will be set below
+            )
+            active_tasks[chapter_index] = task_id
+
         # Update individual chapter progress
         chapter_progresses[chapter_index] = progress_pct
 
-        # Mark chapter as started when progress > 0
-        if progress_pct > 0 and start_times[chapter_index] is None:
-            start_times[chapter_index] = console.get_time()
-            progress.update(
-                active_tasks[chapter_index], start_time=start_times[chapter_index]
-            )
+        # Only update task if it exists (it might not exist if show_all_chapter_bars=False and chapter hasn't started)
+        if chapter_index in active_tasks:
+            # Mark chapter as started when progress > 0
+            if progress_pct > 0 and start_times[chapter_index] is None:
+                start_times[chapter_index] = console.get_time()
+                # Switch from indeterminate to determinate bar when download starts
+                progress.update(
+                    active_tasks[chapter_index],
+                    total=100,  # Switch to determinate progress bar
+                    start_time=start_times[chapter_index],
+                )
 
-        # Mark chapter as completed when finished
-        if progress_pct >= 100 and start_times[chapter_index] is not None:
-            # Set completion time to freeze the timer
-            completion_time = console.get_time()
-            progress.update(
-                active_tasks[chapter_index], completion_time=completion_time
-            )
-            # Only increment once per chapter when it first reaches 100%
-            if old_progress < 100:
-                downloaded_count += 1
+            # Mark chapter as completed when finished
+            if progress_pct >= 100 and start_times[chapter_index] is not None:
+                # Set completion time to freeze the timer
+                completion_time = console.get_time()
+                progress.update(
+                    active_tasks[chapter_index], completion_time=completion_time
+                )
+                # Only increment once per chapter when it first reaches 100%
+                if old_progress < 100:
+                    downloaded_count += 1
 
-        # Update individual chapter bar
-        progress.update(active_tasks[chapter_index], completed=progress_pct)
+            # Update individual chapter bar
+            progress.update(active_tasks[chapter_index], completed=progress_pct)
 
-        # Calculate overall progress
-        overall_pct = sum(chapter_progresses) / total_chapters
-        progress.update(overall_task_id, completed=overall_pct)
+            # Calculate overall progress
+            overall_pct = sum(chapter_progresses) / total_chapters
+            progress.update(overall_task_id, completed=overall_pct)
 
-        # Determine emoji based on state
-        if completed or progress_pct >= 100:
-            emoji = "✅"  # Completed
-        elif progress_pct > 0:
-            emoji = "⬇️"  # Downloading
-        else:
-            emoji = "🔄️"  # Pending
+            # Determine emoji based on state
+            if completed or progress_pct >= 100:
+                emoji = "✅"  # Completed
+                # Hide completed chapter bar if hide_completed_bars is True
+                if hide_completed_bars:
+                    progress.remove_task(active_tasks[chapter_index])
+                    del active_tasks[chapter_index]
+                    return  # Exit early since we removed the task
+            elif progress_pct > 0:
+                emoji = "⬇️"  # Downloading
+            else:
+                emoji = "🔄️"  # Pending
 
-        # Update chapter emoji
-        progress.update(active_tasks[chapter_index], emoji=emoji)
+            # Update chapter emoji (only if task still exists)
+            if chapter_index in active_tasks:
+                progress.update(active_tasks[chapter_index], emoji=emoji)
 
     def create_display():
         header_lines = [
@@ -653,9 +695,7 @@ def _download_chapters_with_progress(
 
         return Group(*display_elements)
 
-    # Start display
-    with Live(create_display(), console=console, refresh_per_second=4) as live:
-        # Download wrapper with progress updates
+    with Live(create_display(), console=console) as live:
         def download_with_progress(chapter_data):
             index, chapter = chapter_data
             result = download_hls_chapter_func(
@@ -669,8 +709,7 @@ def _download_chapters_with_progress(
             )
             chapter_name, success = result
 
-            # Handle failed downloads
-            if not success:
+            if not success and index in active_tasks:
                 progress.update(active_tasks[index], emoji="❌")
 
             live.update(create_display())
