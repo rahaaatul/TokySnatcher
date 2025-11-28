@@ -696,6 +696,7 @@ def _download_chapters_with_progress(
         return Group(*display_elements)
 
     with Live(create_display(), console=console) as live:
+
         def download_with_progress(chapter_data):
             index, chapter = chapter_data
             result = download_hls_chapter_func(
