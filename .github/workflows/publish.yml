@@ -71,8 +71,9 @@ jobs:
   release:
     name: Semantic Release
     needs: [lint]
-    # TEMPORARILY DISABLED - Manual releases only for now
-    if: false
+    if: |
+      github.event_name == 'push' &&
+      !startsWith(github.event.head_commit.message, 'chore: release')
     runs-on: ubuntu-latest
 
     # Prevent concurrent releases on the same branch
