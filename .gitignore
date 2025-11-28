@@ -125,6 +125,9 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+# ruff
+.ruff_cache
+
 # Pyre type checker
 .pyre/
 
@@ -140,6 +143,8 @@ dmypy.json
 # Icon must end with two \r
 Icon
 
+# dot_files
+.*
 
 # Thumbnails
 ._*
@@ -166,16 +171,5 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/macos
 
-ruff.toml
-
-# Development docs
-audit.md
-TODO.md
-
 # uv lock file
 uv.lock
-
-# local
-backups/
-scripts/
-analysis/

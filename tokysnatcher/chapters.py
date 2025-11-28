@@ -38,6 +38,7 @@ def fetch_post_details(slug: str) -> dict | None:
         response = requests.post(
             "https://tokybook.com/api/v1/search/post-details",
             json={"dynamicSlugId": slug},
+            timeout=30,
         )
         response.raise_for_status()
         return response.json()
@@ -147,6 +148,7 @@ def fetch_playlist_data(book_id: str, token: str) -> dict | None:
         response = requests.post(
             "https://tokybook.com/api/v1/playlist",
             json={"audioBookId": book_id, "postDetailToken": token},
+            timeout=30,
         )
         response.raise_for_status()
         return response.json()
@@ -180,18 +182,18 @@ def prepare_chapters(
             continue
 
         # URL Construction with proper encoding
-        logging.trace(f"Raw src value from API: '{src_value}'")
+        logging.debug(f"Raw src value from API: '{src_value}'")
         if " " in src_value:
-            logging.trace(f"API src contains SPACES - needs encoding: '{src_value}'")
+            logging.debug(f"API src contains SPACES - needs encoding: '{src_value}'")
         if "%20" in src_value:
-            logging.trace(f"API src already encoded: '{src_value}'")
+            logging.debug(f"API src already encoded: '{src_value}'")
 
         # Encode the src_value for URLs - the server expects encoded URLs
         encoded_src = quote(src_value)
-        logging.trace(f"After encoding: '{encoded_src}'")
+        logging.debug(f"After encoding: '{encoded_src}'")
 
         full_url = f"https://tokybook.com/api/v1/public/audio/{encoded_src}"
-        logging.trace(f"Final constructed URL: '{full_url}'")
+        logging.debug(f"Final constructed URL: '{full_url}'")
 
         chapters.append(
             {
@@ -248,6 +250,7 @@ def get_chapters(
     custom_folder: Path | None = None,
     verbose: bool = False,
     show_all_chapter_bars: bool = False,
+    interactive: bool = True,
 ) -> None:
     """Get Chapters to download.
 
@@ -301,6 +304,5 @@ def get_chapters(
         author=author,
         verbose=verbose,
         show_all_chapter_bars=show_all_chapter_bars,
+        interactive=interactive,
     )
-
-    print()

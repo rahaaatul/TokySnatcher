@@ -1,27 +1,22 @@
 from dataclasses import dataclass
+from typing import Optional
 import argparse
 import logging
-import platform
 import shutil
 import sys
-from os import name, system
 from pathlib import Path
 
 import questionary
+from rich.console import Console
+from rich.table import Table
 
 from .chapters import get_chapters
 from .search import search_book
-
-# Terminal settings for Unix-like systems
-if platform.system() != "Windows":
-    import termios
-
-    fd: int = sys.stdin.fileno()
-    old_term_settings: list[int] = termios.tcgetattr(fd)
-else:
-    termios = None
-
 from .utils import setup_colored_logging
+
+
+# Configure global Rich console
+console = Console()
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DownloadConfig:
-    directory: Path | None
+    directory: Optional[Path]
     verbose: bool
     show_all_chapter_bars: bool
 
@@ -47,21 +42,74 @@ def check_ffmpeg() -> None:
 
 def clear_terminal() -> None:
     """Clear the terminal screen."""
-    system("cls" if name == "nt" else "clear")  # noqa: S605
+    console.clear()
+
+
+class RichArgumentParser(argparse.ArgumentParser):
+    """ArgumentParser that uses custom Rich help formatting."""
+
+    def print_help(self, file=None):
+        """Print beautiful Rich-formatted help."""
+
+        console.print("\nAn extremely fast Tokybook downloader.\n")
+        console.print(
+            "[bold green]Usage:[/bold green] [yellow]tokysnatcher[/yellow] [cyan][OPTIONS][cyan]\n"
+        )
+        console.print("[bold green]Options:[/bold green]")
+
+        options = [
+            "[cyan]-h[/cyan], [cyan]--help[/cyan]",
+            "[cyan]-d[/cyan], [cyan]--directory [blue]<DIRECTORY>[/blue][/cyan]",
+            "[cyan]-s[/cyan], [cyan]--search [blue]<SEARCH>[/blue][/cyan]",
+            "[cyan]-u[/cyan], [cyan]--url [blue]<URL>[/blue][/cyan]",
+            "[cyan]-v[/cyan], [cyan]--verbose[/cyan]",
+            "[cyan]-a[/cyan], [cyan]--show-all-chapter-bars[/cyan]",
+        ]
+
+        descriptions = [
+            "Show this help message and exit",
+            "Custom download directory",
+            "Search query to bypass interactive menu",
+            "Direct URL to download, bypassing search",
+            "Show detailed logs during download",
+            "Show all chapter progress bars permanently",
+        ]
+
+        table = Table(box=None, show_header=False, show_lines=False)
+        table.add_column("Flag")
+        table.add_column("Description")
+
+        for opt, desc in zip(options, descriptions):
+            table.add_row(opt, desc)
+
+        console.print(table, markup=True)
+        self.exit()
+
+
+def print_usage_hint():
+    """Print a quick usage hint."""
+    console.print("\n[dim cyan]📖 For full help: tokysnatcher --help[/dim cyan]")
 
 
 def validate_url(url: str) -> str:
     """Validate and return a validated url."""
-    if not url.startswith("https://tokybook.com/"):
-        raise ValueError(f"Invalid URL: {url}. Must start with https://tokybook.com/")
+    # More robust check (allows http, https, www, non-www)
+    if "tokybook.com" not in url:
+        raise ValueError(f"Invalid URL: {url}. Must be a tokybook.com URL")
+
+    # Ensure protocol is present for requests library later
+    if not url.startswith("http"):
+        url = "https://" + url
     return url
 
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="TokySnatcher - Download Audiobooks from TokyBook"
+    parser = RichArgumentParser(
+        description="TokySnatcher - Download Audiobooks from TokyBook",
+        prog="tokysnatcher",
     )
+
     parser.add_argument(
         "-d", "--directory", type=str, default=None, help="Custom download directory"
     )
@@ -92,87 +140,98 @@ def parse_arguments() -> argparse.Namespace:
         default=False,
         help="Show all chapter progress bars permanently",
     )
+
     return parser.parse_args()
 
 
-def execute_download(url: str, config: DownloadConfig) -> None:
+def execute_download(
+    url: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Execute the download process for a given URL."""
-    from .utils import _shutdown_requested
-
     logger.info("Download starting.")
     get_chapters(
         url,
         config.directory,
         verbose=config.verbose,
         show_all_chapter_bars=config.show_all_chapter_bars,
+        interactive=interactive,
     )
 
-    # Check if download was interrupted
-    if _shutdown_requested:
-        logger.warning("Download was cancelled by user.")
 
-
-def handle_url_action(url: str, config: DownloadConfig) -> None:
+def handle_url_action(
+    url: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Handle direct URL download."""
     validated_url = validate_url(url)
     logger.info("Downloading from provided URL.")
-    execute_download(validated_url, config)
+    execute_download(validated_url, config, interactive)
 
 
-def handle_search_action(query: str, config: DownloadConfig) -> None:
+def handle_search_action(
+    query: str, config: DownloadConfig, interactive: bool = True
+) -> None:
     """Handle search action."""
+    if not query:
+        query = questionary.text("Enter search query:").ask()
+        if not query:
+            return
     result = search_book(query, interactive=True)
     if result:
-        execute_download(result, config)
+        execute_download(result, config, interactive)
 
 
 def handle_interactive_action(config: DownloadConfig) -> None:
     """Handle interactive menu selection."""
-    choices = ["Search book", "Download from URL", "Exit"]
-    selected_action = questionary.select("Choose action:", choices=choices).ask()
 
-    if selected_action is None:
-        logger.info("No action selected. Exiting.")
-        return
-
-    actions = {
-        "Search book": lambda: handle_search_action(
-            input("Enter search query: "), config
-        ),
-        "Download from URL": lambda: handle_url_action(get_validated_input(), config),
-        "Exit": lambda: None,
-    }
-
-    action = actions.get(selected_action)
-    if action:
-        action()
-
-
-def get_validated_input() -> str:
-    """Get validated URL input from user."""
-    url = input("Enter URL: ")
-    try:
-        return validate_url(url)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return get_validated_input()
-
-
-def get_input() -> str:
-    """Get URL input from user for manual download. Deprecated, use get_validated_input."""
     while True:
-        url = input("Enter URL: ")
+        console.print(
+            "[bold magenta]Welcome to TokySnatcher Interactive Mode![/bold magenta]\n"
+        )
+
+        search_label = "🔍 Search Books"
+        url_label = "🌍 Download book from URL"
+        exit_label = "❌ Exit"
+
+        choices = [url_label, search_label, exit_label]
+        selected_action = questionary.select("Choose an action:", choices=choices).ask()
+
+        if selected_action is None or selected_action == exit_label:
+            logger.info("Exiting.")
+            sys.exit(0)
+
+        try:
+            if selected_action == search_label:
+                handle_search_action("", config)
+                console.clear()
+            elif selected_action == url_label:
+                url = get_validated_input()
+                if url is not None:
+                    handle_url_action(url, config)
+                    console.clear()
+        except Exception as e:
+            console.print(f"[red]Error during download: {e}[/red]")
+            console.clear()
+
+
+def get_validated_input() -> Optional[str]:
+    """Get validated URL input from user."""
+    while True:
+        url = questionary.text("Enter URL:").ask()
+        if url is None or url == "":  # User cancelled or empty
+            return None
         try:
             return validate_url(url)
         except ValueError as e:
-            print(f"Error: {e}")
-            continue
+            console.print(f"[red]Error: {e}[/red]")
 
 
 def main() -> None:
-    """Get argument from CLI and execute the selected action."""
+    """Main entry point for TokySnatcher."""
     check_ffmpeg()
+
+    # Let argparse handle the help flag automatically via CustomHelpAction
     args = parse_arguments()
+
     setup_colored_logging(args.verbose)
 
     config = DownloadConfig(
@@ -183,20 +242,17 @@ def main() -> None:
 
     try:
         if args.url:
-            handle_url_action(args.url, config)
+            handle_url_action(args.url, config, False)
         elif args.search:
-            handle_search_action(args.search, config)
+            handle_search_action(args.search, config, False)
         else:
             handle_interactive_action(config)
     except KeyboardInterrupt:
-        logger.warning("Process interrupted by user.")
+        logger.warning("\nProcess interrupted by user.")
         sys.exit(0)
     except Exception:
         logger.exception("An unexpected error occurred")
         sys.exit(1)
-    finally:
-        if termios:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_term_settings)
 
 
 if __name__ == "__main__":
