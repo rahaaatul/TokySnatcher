@@ -39,7 +39,7 @@ dev = [
 
 [tool.semantic_release]
 version_variables = ["pyproject.toml:project.version"]
-build_command = "uv build"
+build_command = "python -m pip install build && python -m build"
 dist_path = "dist/"
 upload_to_pypi = false
 prerelease_tag = "rc"
