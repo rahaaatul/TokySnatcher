@@ -1,3 +1,4 @@
+from typing import Callable, Optional, Any
 import logging
 import re
 import requests
@@ -28,27 +29,27 @@ def _parse_hls_playlist(playlist_url: str, headers: dict) -> list[str]:
 
     logger = logging.getLogger(__name__)
 
-    logging.trace(f"Request headers: {headers}")
-
+    logging.debug(f"Request headers: {headers}")
+ 
     headers_copy = headers.copy()
     headers_copy["X-Track-Src"] = playlist_url.replace("https://tokybook.com", "")
-
-    logging.trace(f"Modified headers for X-Track-Src: {headers_copy}")
+ 
+    logging.debug(f"Modified headers for X-Track-Src: {headers_copy}")
 
     try:
         response = requests.get(playlist_url, headers=headers_copy, timeout=30)
-        logging.trace(f"HTTP {response.status_code} from {playlist_url}")
-        logging.trace(f"Response headers: {dict(response.headers)}")
+        logging.debug(f"HTTP {response.status_code} from {playlist_url}")
+        logging.debug(f"Response headers: {dict(response.headers)}")
 
         response.raise_for_status()
 
         playlist_text = response.text
-        logging.trace(
+        logging.debug(
             f"Playlist content ({len(playlist_text)} chars): {playlist_text[:200]}..."
         )
 
         base_url = playlist_url.rsplit("/", 1)[0] + "/"
-        logging.trace(f"Base URL for relative segments: {base_url}")
+        logging.debug(f"Base URL for relative segments: {base_url}")
 
         segments = []
         for line in playlist_text.splitlines():
@@ -58,18 +59,18 @@ def _parse_hls_playlist(playlist_url: str, headers: dict) -> list[str]:
                 and not line.startswith("#")
                 and (line.startswith("http") or line.startswith("https"))
             ):
-                logging.trace(f"Absolute segment URL: {line}")
+                logging.debug(f"Absolute segment URL: {line}")
                 segments.append(line)
             elif line and not line.startswith("#") and not line.startswith("http"):
                 full_url = base_url + line
-                logging.trace(f"Relative segment URL resolved: {line} → {full_url}")
+                logging.debug(f"Relative segment URL resolved: {line} → {full_url}")
                 segments.append(full_url)
 
-        logging.trace(f"Found {len(segments)} total segments")
+        logging.debug(f"Found {len(segments)} total segments")
         if not segments:
             raise ValueError("No segments found in HLS playlist")
 
-        logging.success(f"Successfully parsed {len(segments)} segments for chapter")
+        logging.info(f"Successfully parsed {len(segments)} segments for chapter")
         return segments
 
     except requests.HTTPError as e:
@@ -100,7 +101,7 @@ def download_segments_sequential(
     item: dict,
     chapter_index: int,
     total_segments: int,
-    progress_callback: callable | None = None,
+    progress_callback: Optional[Callable[..., Any]] = None,
 ) -> bool:
     """Download HLS segments sequentially and write to file."""
     downloaded_segments = [0]  # Use list to allow modification in nested function
@@ -117,7 +118,7 @@ def download_segments_sequential(
             seg_headers["X-Track-Src"] = segment_url.replace("https://tokybook.com", "")
 
             # Log each TS segment URL being downloaded
-            logging.trace(f"Downloading TS segment: {segment_url}")
+            logging.debug(f"Downloading TS segment: {segment_url}")
 
             seg_response = requests.get(
                 segment_url, headers=seg_headers, stream=True, timeout=30
@@ -153,7 +154,7 @@ def download_segments_concurrent(
     item: dict,
     chapter_index: int,
     total_segments: int,
-    progress_callback: callable | None = None,
+    progress_callback: Optional[Callable[..., Any]] = None,
     max_concurrent_segments: int = 4,
 ) -> bool:
     """Download HLS segments concurrently and write to file."""
@@ -161,7 +162,7 @@ def download_segments_concurrent(
     import threading
 
     downloaded_segments = [0]  # Use list to allow modification in nested function
-    segment_data = [
+    segment_data: list[Optional[bytes]] = [
         None
     ] * total_segments  # List to store segment data in correct order
     progress_lock = threading.Lock()
@@ -175,7 +176,7 @@ def download_segments_concurrent(
         seg_headers["X-Track-Src"] = segment_url.replace("https://tokybook.com", "")
 
         # Log each TS segment URL being downloaded
-        logging.trace(f"Downloading TS segment: {segment_url}")
+        logging.debug(f"Downloading TS segment: {segment_url}")
 
         seg_response = requests.get(
             segment_url, headers=seg_headers, stream=True, timeout=30
@@ -254,8 +255,8 @@ def download_hls_chapter_core(
     download_folder: Path,
     chapter_index: int,
     book_title: str,
-    progress_callback: callable | None = None,
-    total_chapters: int | None = None,
+    progress_callback: Optional[Callable[..., Any]] = None,
+    total_chapters: Optional[int] = None,
     max_concurrent_segments: int = 4,
 ) -> tuple[str, bool]:
     """Core download logic shared between all download functions.
@@ -330,7 +331,7 @@ def download_hls_chapter_core(
         # Check result
         file_size = mp3_filename.stat().st_size
         if not _shutdown_requested and progress_callback is None:
-            logging.success(
+            logging.log(utils.SUCCESS_LEVEL_NUM,
                 f"Successfully downloaded: {item['name']} ({file_size:,} bytes)"
             )
         return item["name"], True
@@ -398,7 +399,7 @@ def download_hls_chapter_with_progress(
     download_folder: Path,
     chapter_index: int,
     book_title: str,
-    progress_updater: callable,
+    progress_updater: Callable[..., Any],
     max_concurrent_segments: int = 4,
 ) -> tuple[str, bool]:
     """Download and concatenate a single HLS chapter with progress updates."""
@@ -487,7 +488,7 @@ def _download_chapters_verbose(
                     f"Download completed: {successful_downloads}/{total_chapters} chapters downloaded successfully, {failed_downloads} failed"
                 )
             else:
-                logging.success(
+                logging.log(utils.SUCCESS_LEVEL_NUM,
                     f"Download completed successfully: All {total_chapters} chapters downloaded"
                 )
 
@@ -547,7 +548,7 @@ def _download_chapters_with_progress(
     download_folder: Path,
     book_title: str,
     author: str,
-    download_hls_chapter_func: callable,
+    download_hls_chapter_func: Callable[..., Any],
     max_concurrent_segments: int = 4,
 ) -> None:
     """Download chapters with progress bars using custom columns."""
@@ -560,7 +561,7 @@ def _download_chapters_with_progress(
     ] * total_chapters  # Track progress (0-100%) for each chapter
     downloaded_count = 0  # Count of fully completed chapters
     active_tasks = {}  # chapter_index -> task_id for dynamic bars
-    start_times = [None] * total_chapters  # Track when each chapter starts
+    start_times: list[Optional[float]] = [None] * total_chapters  # Track when each chapter starts
 
     # Create single progress display for all items
     progress = utils.create_progress_display()

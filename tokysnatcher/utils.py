@@ -3,6 +3,9 @@
 import logging
 import os
 import time
+from contextlib import contextmanager
+from typing import Generator
+
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -14,30 +17,14 @@ from rich.text import Text
 
 # Custom logging levels
 SUCCESS_LEVEL_NUM = 25  # Between INFO (20) and WARNING (30)
-TRACE_LEVEL_NUM = 5  # Below DEBUG (10)
 logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
-logging.addLevelName(TRACE_LEVEL_NUM, "TRACE")
 
 
-# Custom logging functions that use standard logging.log
-def log_success(message, *args, **kws):
-    """Log success message directly."""
-    logging.log(SUCCESS_LEVEL_NUM, message, *args, **kws)
 
-
-def log_trace(message, *args, **kws):
-    """Log trace message directly."""
-    logging.log(TRACE_LEVEL_NUM, message, *args, **kws)
-
-
-# Add to logging module for compatibility
-logging.success = log_success
-logging.trace = log_trace
 
 
 # Formatting constants
 LOG_LEVEL_COLORS = {
-    "TRACE": "dim white",
     "DEBUG": "white",
     "INFO": "blue",
     "WARNING": "yellow",
@@ -55,7 +42,7 @@ class LogCapture(logging.Handler):
     def __init__(self, console: Console):
         super().__init__()
         self.console = console
-        self.setLevel(TRACE_LEVEL_NUM)  # Show TRACE and all higher levels
+        self.setLevel(logging.DEBUG)  # Show DEBUG and all higher levels
 
     def _format_timestamp(self, created: float) -> str:
         """Format timestamp with milliseconds."""
@@ -187,6 +174,28 @@ def create_progress_display() -> Progress:
 _shutdown_requested = False
 
 
+@contextmanager
+def download_context() -> Generator[dict, None, None]:
+    """Context manager for download operations that manages global state."""
+    global _shutdown_requested
+
+    # Initialize clean state for this context
+    _shutdown_requested = False
+
+    context_state = {"shutdown_requested": False}
+
+    try:
+        yield context_state
+    except KeyboardInterrupt:
+        _shutdown_requested = True
+        context_state["shutdown_requested"] = True
+        raise
+    finally:
+        # Restore or propagate shutdown state
+        if context_state["shutdown_requested"]:
+            _shutdown_requested = True
+
+
 def setup_colored_logging(verbose_logging: bool = False) -> None:
     """Set up unified Rich colored logging for the entire application.
 
@@ -204,7 +213,7 @@ def setup_colored_logging(verbose_logging: bool = False) -> None:
 
         # Configure logging to show ALL messages with ZERO suppression
         root_logger.addHandler(log_capture)
-        root_logger.setLevel(TRACE_LEVEL_NUM)  # Show everything including TRACE
+        root_logger.setLevel(logging.DEBUG)  # Show everything including DEBUG
 
         # NO log suppression in verbose mode - show ALL logs for debugging
         logging.info(
