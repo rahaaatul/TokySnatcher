@@ -1,6 +1,6 @@
 [project]
 name = "tokysnatcher"
-version = "0.5.0"
+version = "0.5.1"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
 requires-python = ">=3.9,<3.15"
