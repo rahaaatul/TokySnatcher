@@ -57,7 +57,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv install --group dev
+          uv pip install --group dev
 
       - name: Lint with ruff
         run: uv run ruff check .
@@ -148,7 +148,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv install --group dev
+          uv pip install --group dev
 
       - name: Build package
         run: uv build
