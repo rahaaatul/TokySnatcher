@@ -8,59 +8,134 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:  # Manual trigger option
 
-permissions:
-  contents: write
-  pull-requests: write
-  id-token: write  # For PyPI publishing
+# Default permissions - least privileged
+permissions: {}
 
 jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+
+  lint:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv install --group dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
   release:
+    name: Semantic Release
+    needs: [lint]
     if: |
       github.event_name == 'push' &&
       !startsWith(github.event.head_commit.message, 'chore: release')
     runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        fetch-depth: 0
+    # Prevent concurrent releases on the same branch
+    concurrency:
+      group: ${{ github.workflow }}-release-${{ github.ref }}
+      cancel-in-progress: false
 
-    - name: Setup uv
-      uses: astral-sh/setup-uv@v4
-
-    - name: Semantic Release
-      run: uv run semantic-release --github --no-api
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  lint:
-    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # For creating releases and updating code
+      pull-requests: write  # For PR management
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Setup uv
-      uses: astral-sh/setup-uv@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Lint with ruff
-      run: uv run ruff check .
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Force checkout to workflow SHA
+        run: git reset --hard ${{ github.sha }}
+
+      - name: Semantic Release
+        uses: python-semantic-release/python-semantic-release@v10.5.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          git_committer_name: "github-actions[bot]"
+          git_committer_email: "github-actions[bot]@users.noreply.github.com"
 
   publish:
+    name: Publish to PyPI
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      id-token: write  # For PyPI publishing
+
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup uv
-      uses: astral-sh/setup-uv@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-    - name: Build package
-      run: uv build
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
 
-    - name: Publish to PyPI
-      uses: pypa/gh-action-pypi-publish@release/production
-      with:
-        print-hash: true
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          uv install --group dev
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/production
+        with:
+          print-hash: true
