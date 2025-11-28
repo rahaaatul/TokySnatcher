@@ -16,7 +16,6 @@ permissions: {}
 jobs:
   dependency-review:
     name: Dependency Review
-    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -44,13 +43,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-${{ runner.os }}-</parameter>
+            uv-${{ runner.os }}-
 
-      - name: Install dependencies</parameter>
+      - name: Install dependencies
         run: |
-          uv pip install --group dev
+          uv install --group dev
 
       - name: Lint with ruff
         run: uv run ruff check .
@@ -63,7 +62,6 @@ jobs:
     needs: [lint]
     if: |
       github.event_name == 'push' &&
-      github.event.head_commit != null &&
       !startsWith(github.event.head_commit.message, 'chore: release')
     runs-on: ubuntu-latest
 
@@ -126,13 +124,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          key: uv-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
             uv-${{ runner.os }}-
 
       - name: Install dependencies
         run: |
-          uv pip install --group dev
+          uv install --group dev
 
       - name: Build package
         run: uv build
