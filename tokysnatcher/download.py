@@ -308,7 +308,7 @@ def download_hls_chapter_core(
             # Sequential download (original behavior)
             success = download_segments_sequential(
                 segments,
-                mp3_filename,
+                ts_filename,
                 download_headers,
                 item,
                 chapter_index,
@@ -321,7 +321,7 @@ def download_hls_chapter_core(
             # Concurrent download
             success = download_segments_concurrent(
                 segments,
-                mp3_filename,
+                ts_filename,
                 download_headers,
                 item,
                 chapter_index,
