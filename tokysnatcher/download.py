@@ -332,7 +332,7 @@ def download_hls_chapter_core(
             if not success:
                 return item["name"], False
 
-            # Sanity check: TS must exist before conversion
+        # Sanity check: TS must exist before conversion
         if not ts_filename.exists() or ts_filename.stat().st_size == 0:
             logging.error("No TS produced for chapter: %s", item["name"])
             return item["name"], False
@@ -364,9 +364,7 @@ def download_hls_chapter_core(
             )
 
             if completed.returncode != 0:
-                logging.error(
-                    "ffmpeg conversion failed for chapter: %s", item["name"]
-                )
+                logging.error("ffmpeg conversion failed for chapter: %s", item["name"])
                 logging.error(
                     "ffmpeg stderr (first 400 chars): %s",
                     completed.stderr[:400],
@@ -376,9 +374,15 @@ def download_hls_chapter_core(
                 return item["name"], False
 
         finally:
-            # If mp3 was created successfully, remove the temporary TS
-            if mp3_filename.exists() and ts_filename.exists():
-                ts_filename.unlink()
+            # Always clean up temporary TS file
+            if ts_filename.exists():
+                try:
+                    ts_filename.unlink()
+                    logging.debug(f"Cleaned up temporary TS file: {ts_filename}")
+                except OSError as e:
+                    logging.warning(
+                        f"Failed to remove temporary TS file {ts_filename}: {e}"
+                    )
         # Check result
         file_size = mp3_filename.stat().st_size
         if not _shutdown_requested and progress_callback is None:

@@ -1,6 +1,6 @@
 [project]
 name = "tokysnatcher"
-version = "0.5.1"
+version = "0.6.0"
 description = "A simple audiobook downloader for tokybook.com"
 readme = "README.md"
 requires-python = ">=3.9,<3.15"
@@ -20,6 +20,8 @@ classifiers = [
 "Bug Tracker" = "https://github.com/rahaaatul/TokySnatcher/issues"
 
 [project.scripts]
+ts = 'tokysnatcher.__main__:main'
+toky = 'tokysnatcher.__main__:main'
 tokysnatcher = 'tokysnatcher.__main__:main'
 
 [build-system]
