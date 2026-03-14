@@ -2,6 +2,12 @@
 
 > Snatch audiobooks from Tokybook 😈
 
+> [!IMPORTANT]
+> Tokybook has announced that they are **temporarily closing for a major overhaul** to remove all harmful advertisements after 10 years of operation.
+
+> [!WARNING]
+> **TokySnatcher may not work during this transition period.**
+
 ## Installation
 
 1. Open terminal, then run:
@@ -40,4 +46,3 @@
 >
 > - By default, TokySnatcher saves audiobooks to your system's Music folder in an "Audiobooks" subfolder (e.g., `C:\Users\User\Music\Audiobooks\` on Windows)
 > - Use `-d` or `--directory` to specify a custom location
->
