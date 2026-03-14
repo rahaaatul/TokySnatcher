@@ -2,6 +2,7 @@ from typing import Callable, Optional, Any
 import logging
 import re
 import requests
+import subprocess
 from pathlib import Path
 from rich.console import Console, Group
 from rich.live import Live
@@ -276,9 +277,13 @@ def download_hls_chapter_core(
         return item["name"], False
 
     clean_name = _create_standardized_filename(chapter_index, book_title)
+    # Download raw HLS segments into a TS container first (NOT mp3)
+    ts_filename = download_folder.joinpath(f"{clean_name}.ts")
     mp3_filename = download_folder.joinpath(f"{clean_name}.mp3")
 
-    # Clean up any existing file
+    # Clean up any existing files
+    if ts_filename.exists():
+        ts_filename.unlink()
     if mp3_filename.exists():
         mp3_filename.unlink()
 
@@ -303,7 +308,7 @@ def download_hls_chapter_core(
             # Sequential download (original behavior)
             success = download_segments_sequential(
                 segments,
-                mp3_filename,
+                ts_filename,
                 download_headers,
                 item,
                 chapter_index,
@@ -316,7 +321,7 @@ def download_hls_chapter_core(
             # Concurrent download
             success = download_segments_concurrent(
                 segments,
-                mp3_filename,
+                ts_filename,
                 download_headers,
                 item,
                 chapter_index,
@@ -327,6 +332,53 @@ def download_hls_chapter_core(
             if not success:
                 return item["name"], False
 
+            # Sanity check: TS must exist before conversion
+        if not ts_filename.exists() or ts_filename.stat().st_size == 0:
+            logging.error("No TS produced for chapter: %s", item["name"])
+            return item["name"], False
+        # Convert TS -> real MP3 using ffmpeg
+        try:
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(ts_filename),
+                "-vn",
+                "-c:a",
+                "libmp3lame",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                "-b:a",
+                "320k",
+                str(mp3_filename),
+            ]
+
+            completed = subprocess.run(
+                ffmpeg_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+
+            if completed.returncode != 0:
+                logging.error(
+                    "ffmpeg conversion failed for chapter: %s", item["name"]
+                )
+                logging.error(
+                    "ffmpeg stderr (first 400 chars): %s",
+                    completed.stderr[:400],
+                )
+                if mp3_filename.exists():
+                    mp3_filename.unlink()
+                return item["name"], False
+
+        finally:
+            # If mp3 was created successfully, remove the temporary TS
+            if mp3_filename.exists() and ts_filename.exists():
+                ts_filename.unlink()
         # Check result
         file_size = mp3_filename.stat().st_size
         if not _shutdown_requested and progress_callback is None:
@@ -348,7 +400,11 @@ def download_hls_chapter_core(
         logger.error(
             f"Response body: {e.response.text[:500] if e.response and e.response.text else 'None'}"
         )
-        if mp3_filename.exists():
+        # TS Cleanup
+        if ts_filename.exists():
+            ts_filename.unlink()
+        # Only remove mp3 if it looks incomplete
+        if mp3_filename.exists() and mp3_filename.stat().st_size == 0:
             mp3_filename.unlink()
         return item["name"], False
     except requests.RequestException as e:
@@ -357,7 +413,12 @@ def download_hls_chapter_core(
         logger.error(f"Failed URL: {item['url']}")
         logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Error details: {str(e)}")
-        if mp3_filename.exists():
+
+        # TS Cleanup
+        if ts_filename.exists():
+            ts_filename.unlink()
+        # Only remove mp3 if it looks incomplete
+        if mp3_filename.exists() and mp3_filename.stat().st_size == 0:
             mp3_filename.unlink()
         return item["name"], False
     except Exception as e:
@@ -369,7 +430,12 @@ def download_hls_chapter_core(
         logger.error(f"Error type: {type(e).__name__}")
         logger.error(f"Error message: {str(e)}")
         logger.error(f"Full traceback:\n{traceback.format_exc()}")
-        if mp3_filename.exists():
+
+        # TS Cleanup
+        if ts_filename.exists():
+            ts_filename.unlink()
+        # Only remove mp3 if it looks incomplete
+        if mp3_filename.exists() and mp3_filename.stat().st_size == 0:
             mp3_filename.unlink()
         return item["name"], False
 
@@ -404,13 +470,13 @@ def download_hls_chapter_with_progress(
 ) -> tuple[str, bool]:
     """Download and concatenate a single HLS chapter with progress updates."""
     return download_hls_chapter_core(
-        item,
-        download_headers,
-        download_folder,
-        chapter_index,
-        book_title,
-        progress_updater,
-        max_concurrent_segments,
+        item=item,
+        download_headers=download_headers,
+        download_folder=download_folder,
+        chapter_index=chapter_index,
+        book_title=book_title,
+        progress_callback=progress_updater,
+        max_concurrent_segments=max_concurrent_segments,
     )
 
 
